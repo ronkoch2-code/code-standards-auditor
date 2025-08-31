@@ -82,9 +82,26 @@ docker run -p 8000:8000 --env-file .env code-auditor
 
 The Code Standards Auditor includes a native MCP (Model Context Protocol) server for seamless integration with Claude Desktop.
 
+#### Quick Setup
+
 ```bash
-# Configure Claude Desktop
-# Add to ~/Library/Application Support/Claude/claude_desktop_config.json
+# Run the setup script
+./setup_mcp.sh
+
+# Or manually install/update MCP
+python3 -m pip install --upgrade mcp
+
+# Test the MCP server
+python3 mcp/test_server.py
+```
+
+#### Configure Claude Desktop
+
+```bash
+# Copy the configuration to Claude Desktop
+cp mcp/mcp_config.json ~/Library/Application\ Support/Claude/claude_desktop_config.json
+
+# Or manually add to ~/Library/Application Support/Claude/claude_desktop_config.json
 {
   "mcpServers": {
     "code-standards-auditor": {
@@ -94,6 +111,14 @@ The Code Standards Auditor includes a native MCP (Model Context Protocol) server
   }
 }
 ```
+
+#### Troubleshooting MCP Server
+
+If you encounter import errors:
+1. Ensure MCP package is updated: `pip install --upgrade mcp`
+2. Run the test script: `python3 mcp/test_server.py`
+3. Check environment variables are set (GEMINI_API_KEY, NEO4J_PASSWORD)
+4. Review logs in Claude Desktop for specific errors
 
 ### Available Tools in Claude
 - **audit_code**: Analyze code for standards compliance
@@ -287,7 +312,15 @@ For issues or questions:
 
 ## 🔄 Version History
 
-### v1.0.1 (2025-01-27) - Current
+### v1.0.2 (2025-08-31) - Current
+- 🔧 Fixed MCP server import issues
+- ✅ Removed deprecated LogLevel import from mcp.types
+- ✅ Updated MCP package version requirements (>=1.0.0)
+- ✅ Added MCP server test script for validation
+- ✅ Created setup_mcp.sh installation script
+- 📝 Enhanced documentation for MCP integration
+
+### v1.0.1 (2025-01-27)
 - ✅ Implemented configuration management system
 - ✅ Created cache manager and cache service
 - ✅ Implemented Neo4j graph database service

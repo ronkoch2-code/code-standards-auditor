@@ -19,8 +19,7 @@ from mcp.types import (
     Tool, 
     TextContent, 
     ImageContent,
-    EmbeddedResource,
-    LogLevel
+    EmbeddedResource
 )
 
 # Import our existing services
