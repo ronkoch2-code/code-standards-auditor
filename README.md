@@ -7,6 +7,7 @@ An AI-powered code auditing API that integrates into development pipelines to en
 - **Automated Code Review**: Real-time analysis of code against project-specific and language-specific standards
 - **Standards Documentation Management**: Dynamic creation and maintenance of coding standards
 - **Pipeline Integration**: Seamless CI/CD integration through RESTful API
+- **Claude Desktop Integration**: Native MCP server for direct interaction with Claude
 - **Multi-Language Support**: Python, Java, JavaScript, and more
 - **Cost-Optimized LLM Usage**: Intelligent prompt caching and batch processing
 - **Neo4j Graph Database**: Relationship mapping between code patterns and standards
@@ -74,6 +75,34 @@ docker-compose -f docker/docker-compose.yml up --build
 docker build -f docker/Dockerfile -t code-auditor .
 docker run -p 8000:8000 --env-file .env code-auditor
 ```
+
+## 🤖 Claude Desktop Integration
+
+### MCP Server Setup
+
+The Code Standards Auditor includes a native MCP (Model Context Protocol) server for seamless integration with Claude Desktop.
+
+```bash
+# Configure Claude Desktop
+# Add to ~/Library/Application Support/Claude/claude_desktop_config.json
+{
+  "mcpServers": {
+    "code-standards-auditor": {
+      "command": "python3",
+      "args": ["/Volumes/FS001/pythonscripts/code-standards-auditor/mcp/server.py"]
+    }
+  }
+}
+```
+
+### Available Tools in Claude
+- **audit_code**: Analyze code for standards compliance
+- **get_standards**: Retrieve coding standards documentation
+- **update_standards**: Add or modify standards
+- **analyze_project**: Audit entire project directories
+- **get_audit_history**: View historical audit results
+
+See [`mcp/README.md`](mcp/README.md) for detailed setup and usage instructions.
 
 ## 📖 API Usage
 

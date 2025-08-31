@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "code-standards-auditor": {
+      "command": "python3",
+      "args": [
+        "/Volumes/FS001/pythonscripts/code-standards-auditor/mcp/server.py"
+      ],
+      "env": {
+        "GEMINI_API_KEY": "${GEMINI_API_KEY}",
+        "NEO4J_PASSWORD": "${NEO4J_PASSWORD}",
+        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
+      },
+      "capabilities": {
+        "tools": true,
+        "resources": true,
+        "prompts": false
+      },
+      "metadata": {
+        "name": "Code Standards Auditor",
+        "version": "1.0.0",
+        "description": "AI-powered code auditing and standards management"
+      }
+    }
+  }
+}

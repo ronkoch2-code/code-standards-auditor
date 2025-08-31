@@ -1,5 +1,6 @@
 # Core Dependencies
 fastapi==0.109.2
+mcp==0.1.0  # Model Context Protocol for Claude Desktop integration
 uvicorn[standard]==0.27.0
 gunicorn==21.2.0
 pydantic==2.5.3
