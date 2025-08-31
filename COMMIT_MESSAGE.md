@@ -1,35 +1,65 @@
-fix: Resolve MCP server import error and update dependencies
+fix: Resolve missing dependencies and make MCP server robust
 
-## Problem
-The MCP server was failing to start due to an import error:
-- `ImportError: cannot import name 'LogLevel' from 'mcp.types'`
-- The LogLevel class doesn't exist in the current MCP package version
+## Problems Fixed
+1. **ModuleNotFoundError**: google.generativeai package was not installed
+2. **Version Error**: tree-sitter-javascript==0.23.2 doesn't exist (latest is 0.23.1)
+3. **Server Fragility**: Server would crash if any dependency was missing
 
 ## Solution
-- Removed deprecated LogLevel import from mcp/server.py
-- Updated MCP package version requirement from 0.1.0 to >=1.0.0
-- Added comprehensive testing and setup scripts
+Made the MCP server resilient with graceful degradation:
+- Server now starts even with missing services
+- Provides stub implementations when services unavailable
+- Reports service status clearly to users
+- Continues operating with limited functionality
 
 ## Changes
-- **mcp/server.py**: Removed LogLevel from imports (not used in code)
-- **requirements.txt**: Updated MCP package version to >=1.0.0
-- **mcp/test_server.py**: Added test script to validate MCP server setup
-- **setup_mcp.sh**: Created installation script for easy setup
-- **README.md**: 
-  - Added troubleshooting section for MCP server
-  - Updated version history to v1.0.2
-  - Enhanced MCP setup documentation
 
-## Testing
-- Created test_server.py to validate all imports and initialization
-- Setup script checks for required environment variables
-- Instructions added for manual testing
+### mcp/server.py
+- Added comprehensive dependency checking at startup
+- Implemented service stubs (GeminiServiceStub, Neo4jServiceStub, CacheServiceStub)
+- Added detailed status reporting via 'check_status' tool
+- Server runs with graceful degradation when services unavailable
+- Better error messages with installation instructions
+
+### requirements.txt
+- Fixed tree-sitter-javascript version: 0.23.2 → 0.23.1
+
+### New Files
+- **install_mcp.sh**: Enhanced installation script with:
+  - Package-by-package installation with error handling
+  - Environment variable checking
+  - Colored output for better UX
+  - Automatic testing after installation
+  
+- **mcp/requirements_mcp.txt**: Minimal requirements for MCP server only
+
+### mcp/test_server.py (Updated)
+- Added colored terminal output for better readability
+- Enhanced diagnostics for each component
+- Generates specific installation commands for missing packages
+- Tests service initialization
+- Python version checking (3.8+ required)
+
+### README.md
+- Updated to version 1.0.3
+- Added graceful degradation documentation
+- Enhanced setup instructions
+- Added troubleshooting notes
 
 ## Impact
-- MCP server can now start successfully
-- Claude Desktop integration is functional
-- Better developer experience with setup automation
+- **Robustness**: Server no longer crashes on missing dependencies
+- **User Experience**: Clear feedback about what's working/missing
+- **Developer Experience**: Easy installation with helpful diagnostics
+- **Flexibility**: Can run with partial functionality for testing
 
-Fixes: MCP server startup failure
-Type: bugfix
-Scope: mcp-integration
+## Testing
+Run the test script to see detailed diagnostics:
+```bash
+python3 mcp/test_server.py
+```
+
+The server will now start and report its status even if some services are unavailable. Use the 'check_status' tool in Claude to see which services are active.
+
+Fixes: #2 - Google Generative AI import error, tree-sitter version mismatch
+Type: bugfix, enhancement
+Scope: mcp-integration, dependencies

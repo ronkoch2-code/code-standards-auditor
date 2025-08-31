@@ -1,0 +1,37 @@
+# Minimal requirements for MCP Server
+# This file contains only the essential dependencies needed to run the MCP server
+
+# Core MCP requirement
+mcp>=1.0.0
+
+# Google Gemini API (primary LLM)
+google-generativeai==0.3.2
+google-ai-generativelanguage==0.4.0
+grpcio==1.60.0
+grpcio-status==1.60.0
+
+# Anthropic API (fallback)
+anthropic==0.8.1
+
+# Neo4j for graph database
+neo4j==5.16.0
+
+# Redis for caching
+redis==5.0.1
+hiredis==2.3.2
+
+# Async support
+aiofiles==23.2.1
+aiohttp==3.9.1
+
+# Configuration
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# JSON handling
+jsonschema==4.21.1
+
+# Logging
+structlog==24.1.0
+python-json-logger==2.0.7

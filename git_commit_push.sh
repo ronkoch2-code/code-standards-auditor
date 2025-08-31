@@ -43,7 +43,7 @@ if [ "$CURRENT_BRANCH" = "main" ] || [ "$CURRENT_BRANCH" = "master" ]; then
     echo -e "${YELLOW}You're on the main branch. Creating feature branch...${NC}"
     
     # Generate feature branch name based on the fix
-    FEATURE_BRANCH="fix/mcp-server-import-error"
+    FEATURE_BRANCH="fix/mcp-dependencies-robust-server"
     
     # Check if branch already exists
     if git show-ref --verify --quiet refs/heads/$FEATURE_BRANCH; then

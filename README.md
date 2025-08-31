@@ -85,15 +85,18 @@ The Code Standards Auditor includes a native MCP (Model Context Protocol) server
 #### Quick Setup
 
 ```bash
-# Run the setup script
-./setup_mcp.sh
+# Run the enhanced installation script
+chmod +x install_mcp.sh
+./install_mcp.sh
 
-# Or manually install/update MCP
-python3 -m pip install --upgrade mcp
+# Or manually install critical packages
+python3 -m pip install mcp google-generativeai neo4j redis pydantic-settings
 
-# Test the MCP server
+# Test the MCP server with diagnostics
 python3 mcp/test_server.py
 ```
+
+**Note:** The server now runs with graceful degradation. If some services are unavailable, it will still start and provide limited functionality with clear status reporting.
 
 #### Configure Claude Desktop
 
@@ -312,7 +315,17 @@ For issues or questions:
 
 ## 🔄 Version History
 
-### v1.0.2 (2025-08-31) - Current
+### v1.0.3 (2025-08-31) - Current
+- 🔧 Fixed missing Google Generative AI package error
+- 🔧 Fixed tree-sitter-javascript version mismatch (0.23.2 → 0.23.1)
+- ✅ Made MCP server robust with graceful fallback for missing services
+- ✅ Added service stubs for when dependencies are not installed
+- ✅ Enhanced test script with colored output and detailed diagnostics
+- ✅ Created comprehensive installation script (install_mcp.sh)
+- 📝 Server now runs with limited functionality when services unavailable
+- 📝 Added 'check_status' tool for service diagnostics in Claude
+
+### v1.0.2 (2025-08-31)
 - 🔧 Fixed MCP server import issues
 - ✅ Removed deprecated LogLevel import from mcp.types
 - ✅ Updated MCP package version requirements (>=1.0.0)
