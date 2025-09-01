@@ -265,9 +265,9 @@ Provide a comprehensive audit report in JSON format with the structure:
             # Generate response using cached content if available
             if cached_content:
                 model = genai.GenerativeModel.from_cached_content(cached_content)
-                response = await model.generate_content_async(user_prompt)
+                response = model.generate_content(user_prompt)
             else:
-                response = await self.model.generate_content_async(
+                response = self.model.generate_content(
                     [system_instruction, user_prompt]
                 )
             
@@ -354,6 +354,133 @@ Provide a comprehensive audit report in JSON format with the structure:
         
         logger.info(f"Batch audit completed: {len(results)} processed")
         return results
+    
+    async def generate_content_async(
+        self,
+        prompt: str,
+        context: Optional[str] = None,
+        use_caching: bool = True
+    ) -> str:
+        """
+        Generate content using Gemini with optional caching.
+        
+        Args:
+            prompt: The prompt to send to Gemini
+            context: Optional context for the prompt
+            use_caching: Whether to use prompt caching for cost optimization
+            
+        Returns:
+            Generated text content
+        """
+        try:
+            # Build the full prompt
+            if context:
+                full_prompt = f"Context: {context}\n\nRequest: {prompt}"
+            else:
+                full_prompt = prompt
+            
+            # Check cache first if enabled
+            cache_key = None
+            if use_caching and self.cache_manager:
+                cache_key = self._generate_cache_key(full_prompt, prefix="content")
+                cached_result = await self.cache_manager.get(cache_key, namespace="content")
+                if cached_result:
+                    logger.info(f"Using cached content generation for prompt hash: {cache_key[:8]}")
+                    return cached_result
+            
+            # Generate content
+            response = self.model.generate_content(full_prompt)
+            result_text = response.text
+            
+            # Cache the result if caching is enabled
+            if use_caching and self.cache_manager and cache_key:
+                await self.cache_manager.set(cache_key, result_text, ttl=3600, namespace="content")
+                logger.info(f"Cached content generation result: {cache_key[:8]}")
+            
+            return result_text
+            
+        except Exception as e:
+            logger.error(f"Content generation failed: {e}")
+            raise
+    
+    async def generate_with_caching(
+        self,
+        prompt: str,
+        context: Optional[str] = None,
+        use_batch: bool = False
+    ) -> str:
+        """
+        Backward compatibility method for generate_with_caching calls.
+        This method was referenced in other services.
+        """
+        return await self.generate_content_async(
+            prompt=prompt,
+            context=context,
+            use_caching=True
+        )
+    async def generate_content_async(
+        self,
+        prompt: str,
+        context: Optional[str] = None,
+        use_caching: bool = True
+    ) -> str:
+        """
+        Generate content using Gemini with optional caching.
+        
+        Args:
+            prompt: The prompt to send to Gemini
+            context: Optional context for the prompt
+            use_caching: Whether to use prompt caching for cost optimization
+            
+        Returns:
+            Generated text content
+        """
+        try:
+            # Build the full prompt
+            if context:
+                full_prompt = f"Context: {context}\n\nRequest: {prompt}"
+            else:
+                full_prompt = prompt
+            
+            # Check cache first if enabled
+            cache_key = None
+            if use_caching and self.cache_manager:
+                cache_key = self._generate_cache_key(full_prompt, prefix="content")
+                cached_result = await self.cache_manager.get(cache_key, namespace="content")
+                if cached_result:
+                    logger.info(f"Using cached content generation for prompt hash: {cache_key[:8]}")
+                    return cached_result
+            
+            # Generate content
+            response = await self.model.generate_content_async(full_prompt)
+            result_text = response.text
+            
+            # Cache the result if caching is enabled
+            if use_caching and self.cache_manager and cache_key:
+                await self.cache_manager.set(cache_key, result_text, ttl=3600, namespace="content")
+                logger.info(f"Cached content generation result: {cache_key[:8]}")
+            
+            return result_text
+            
+        except Exception as e:
+            logger.error(f"Content generation failed: {e}")
+            raise
+    
+    async def generate_with_caching(
+        self,
+        prompt: str,
+        context: Optional[str] = None,
+        use_batch: bool = False
+    ) -> str:
+        """
+        Backward compatibility method for generate_with_caching calls.
+        This method was referenced in other services.
+        """
+        return await self.generate_content_async(
+            prompt=prompt,
+            context=context,
+            use_caching=True
+        )
     
     async def get_usage_stats(self) -> Dict[str, Any]:
         """Get usage statistics for monitoring and optimization"""

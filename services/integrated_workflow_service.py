@@ -25,6 +25,7 @@ from services.gemini_service import GeminiService
 from services.neo4j_service import Neo4jService
 from services.cache_service import CacheService
 from config.settings import settings
+from utils.service_factory import get_neo4j_service, get_gemini_service, get_cache_service
 
 logger = logging.getLogger(__name__)
 
@@ -82,24 +83,22 @@ class IntegratedWorkflowService:
     
     def __init__(self):
         """Initialize the integrated workflow service."""
-        self.research_service = StandardsResearchService()
-        self.recommendations_service = EnhancedRecommendationsService()
-        self.gemini_service = GeminiService()
+        # Use service factory for proper initialization
+        self.gemini_service = get_gemini_service()
+        self.neo4j_service = get_neo4j_service()  # This can be None if not configured
+        self.cache_service = get_cache_service()
         
-        # Initialize optional services
-        self.neo4j_service = None
-        if settings.USE_NEO4J:
-            try:
-                self.neo4j_service = Neo4jService()
-            except Exception as e:
-                logger.warning(f"Neo4j not available: {e}")
-        
-        self.cache_service = None
-        if settings.USE_CACHE:
-            try:
-                self.cache_service = CacheService()
-            except Exception as e:
-                logger.warning(f"Cache not available: {e}")
+        # Initialize dependent services after core services are set up
+        self.research_service = StandardsResearchService(
+            gemini_service=self.gemini_service,
+            neo4j_service=self.neo4j_service,
+            cache_service=self.cache_service
+        )
+        self.recommendations_service = EnhancedRecommendationsService(
+            gemini_service=self.gemini_service,
+            neo4j_service=self.neo4j_service,
+            cache_service=self.cache_service
+        )
         
         # Workflow tracking
         self.active_workflows: Dict[str, WorkflowContext] = {}
@@ -286,7 +285,45 @@ class IntegratedWorkflowService:
             """
             
             analysis_response = await self.gemini_service.generate_content_async(analysis_prompt)
-            analysis = json.loads(analysis_response)
+            
+            # Parse JSON response with error handling
+            try:
+                # Try to extract JSON from the response
+                response_text = analysis_response.strip()
+                
+                # Look for JSON content in the response
+                json_start = response_text.find('{')
+                json_end = response_text.rfind('}') + 1
+                
+                if json_start >= 0 and json_end > json_start:
+                    json_str = response_text[json_start:json_end]
+                    analysis = json.loads(json_str)
+                else:
+                    # If no JSON found, create a default analysis
+                    logger.warning("No JSON found in analysis response, using default")
+                    analysis = {
+                        "title": research_request,
+                        "category": "general",
+                        "language": "general",
+                        "description": f"Research request: {research_request}",
+                        "key_topics": [research_request],
+                        "complexity": "intermediate",
+                        "priority": "medium",
+                        "estimated_scope": "medium"
+                    }
+                    
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"JSON parsing failed: {e}, using default analysis")
+                analysis = {
+                    "title": research_request,
+                    "category": "general",
+                    "language": "general",
+                    "description": f"Research request: {research_request}",
+                    "key_topics": [research_request],
+                    "complexity": "intermediate",
+                    "priority": "medium",
+                    "estimated_scope": "medium"
+                }
             
             # Perform the research
             standard = await self.research_service.research_standard(
