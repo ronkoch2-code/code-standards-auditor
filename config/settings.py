@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     NEO4J_DATABASE: str = Field(default="neo4j", env="NEO4J_DATABASE")
     NEO4J_MAX_CONNECTION_LIFETIME: int = Field(default=3600, env="NEO4J_MAX_CONNECTION_LIFETIME")
     NEO4J_MAX_CONNECTION_POOL_SIZE: int = Field(default=50, env="NEO4J_MAX_CONNECTION_POOL_SIZE")
+    USE_NEO4J: bool = Field(default=False, env="USE_NEO4J")  # Will be set intelligently based on configuration
     
     # Redis Cache
     REDIS_HOST: str = Field(default="localhost", env="REDIS_HOST")
@@ -128,8 +129,37 @@ class Settings(BaseSettings):
             env_password = os.environ.get("NEO4J_PASSWORD")
             if env_password:
                 return env_password
-            raise ValueError("NEO4J_PASSWORD must be set")
+            # For development, allow empty password but log a warning
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning("NEO4J_PASSWORD not set - Neo4j features will be disabled")
+            return ""
         return v
+    
+    @validator("USE_NEO4J", always=True)
+    def validate_use_neo4j(cls, v, values):
+        """
+        Intelligently set USE_NEO4J based on Neo4j configuration.
+        Only enable Neo4j if we have proper credentials configured.
+        """
+        # Check if explicitly set via environment variable
+        env_use_neo4j = os.environ.get("USE_NEO4J")
+        if env_use_neo4j is not None:
+            return env_use_neo4j.lower() in ("true", "1", "yes", "on")
+        
+        # Auto-detect based on configuration
+        neo4j_password = values.get("NEO4J_PASSWORD", "")
+        neo4j_uri = values.get("NEO4J_URI", "")
+        
+        # Enable Neo4j if we have both URI and password configured
+        should_use = bool(neo4j_password and neo4j_uri and neo4j_uri != "bolt://localhost:7687")
+        
+        if should_use:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("Neo4j configuration detected - enabling Neo4j features")
+        
+        return should_use
     
     @validator("CORS_ORIGINS", pre=True)
     def parse_cors_origins(cls, v):

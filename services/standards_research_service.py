@@ -311,7 +311,7 @@ class StandardsResearchService:
         """Save the standard to the filesystem."""
         try:
             # Determine the path
-            category_path = Path(settings.STANDARDS_DIR) / standard["category"]
+            category_path = Path(settings.STANDARDS_BASE_PATH) / standard["category"]
             category_path.mkdir(parents=True, exist_ok=True)
             
             # Generate filename
