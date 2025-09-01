@@ -14,6 +14,7 @@ import os
 import sys
 import asyncio
 import logging
+import select
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -193,9 +194,13 @@ class EnhancedCLI:
             
             # Ask if user wants to monitor progress
             if Confirm.ask("\n[yellow]Would you like to monitor the workflow progress?[/yellow]"):
-                await self._monitor_workflow_progress(workflow_id)
+                should_continue = await self._monitor_workflow_progress(workflow_id)
+                if not should_continue:
+                    return False  # Exit CLI if user chose to exit
             else:
                 self.console.print(f"\n[dim]Use 'status {workflow_id}' to check progress later[/dim]")
+        
+            return True  # Return to main menu by default
                 
         except Exception as e:
             self.console.print(f"[red]Failed to start workflow: {e}[/red]")
@@ -526,45 +531,295 @@ class EnhancedCLI:
                 if j < len(recommendations) - 1:
                     input("\nPress Enter to continue to next recommendation...")
     
-    async def _monitor_workflow_progress(self, workflow_id: str):
-        """Monitor workflow progress in real-time."""
-        self.console.print(f"\n[cyan]Monitoring workflow: {workflow_id}[/cyan]")
+    async def _monitor_workflow_progress(self, workflow_id: str) -> bool:
+        """Enhanced workflow monitoring with interactive exit options."""
+        return await self._monitor_workflow_interactive(workflow_id)
+    
+    async def _monitor_workflow_interactive(self, workflow_id: str) -> bool:
+        """Monitor workflow with interactive controls and proper exit handling."""
+        self.console.print(f"\n[cyan]🔍 Monitoring Workflow: {workflow_id}[/cyan]")
+        self.console.print("[dim]Press 'q' + Enter to quit monitoring and return to main menu[/dim]")
+        self.console.print("[dim]Or let the workflow complete to see results[/dim]\n")
         
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=self.console
-        ) as progress:
+        monitoring_active = True
+        
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=self.console,
+                transient=False  # Keep progress visible
+            ) as progress:
+                
+                task = progress.add_task("Initializing monitoring...", total=None)
+                check_count = 0
+                
+                while monitoring_active:
+                    # Check for user input (non-blocking)
+                    if await self._check_for_quit_input():
+                        progress.update(task, description="Monitoring stopped by user")
+                        self.console.print("\n[yellow]📤 Monitoring stopped. Workflow continues in background.[/yellow]")
+                        self.console.print(f"[dim]Use 'status {workflow_id}' to check progress later[/dim]")
+                        return True  # Return to main menu
+                    
+                    try:
+                        # Get workflow status
+                        status = await self.workflow_service.get_workflow_status(workflow_id)
+                        
+                        if "error" in status:
+                            progress.update(task, description=f"❌ Error: {status['error']}")
+                            self.console.print(f"\n[red]Workflow Error: {status['error']}[/red]")
+                            break
+                        
+                        current_status = status.get("status", "unknown")
+                        current_phase = status.get("phase", "unknown")
+                        execution_time = status.get("execution_time", 0)
+                        
+                        # Update progress display
+                        progress.update(
+                            task, 
+                            description=f"Status: {current_status} | Phase: {current_phase} | Time: {execution_time:.1f}s"
+                        )
+                        
+                        # Check if workflow is complete
+                        if current_status in ["completed", "failed", "cancelled"]:
+                            if current_status == "completed":
+                                progress.update(task, description="✅ Workflow completed successfully!")
+                                self.console.print("\n[green]🎉 Workflow completed successfully![/green]")
+                            elif current_status == "failed":
+                                progress.update(task, description="❌ Workflow failed")
+                                self.console.print("\n[red]❌ Workflow failed[/red]")
+                            else:
+                                progress.update(task, description="⚠️  Workflow was cancelled")
+                                self.console.print("\n[yellow]⚠️  Workflow was cancelled[/yellow]")
+                            
+                            break
+                        
+                        check_count += 1
+                        
+                        # More frequent checks initially, then less frequent
+                        if check_count < 6:  # First minute: every 10 seconds
+                            await asyncio.sleep(10)
+                        elif check_count < 18:  # Next 2 minutes: every 15 seconds  
+                            await asyncio.sleep(15)
+                        else:  # After 3 minutes: every 30 seconds
+                            await asyncio.sleep(30)
+                            
+                    except Exception as e:
+                        progress.update(task, description=f"❌ Monitoring error: {str(e)[:50]}")
+                        self.console.print(f"\n[red]Monitoring error: {e}[/red]")
+                        await asyncio.sleep(5)  # Brief pause before retrying
+                        
+            # Handle workflow completion
+            if monitoring_active:  # Only show if user didn't quit
+                return await self._handle_workflow_completion(workflow_id)
+            else:
+                return True  # User quit, return to main menu
+                        
+        except KeyboardInterrupt:
+            self.console.print("\n[yellow]⚠️  Monitoring interrupted (Ctrl+C)[/yellow]")
+            self.console.print("[dim]Workflow continues in background[/dim]")
+            return True  # Return to main menu
+        finally:
+            monitoring_active = False
+    
+    async def _check_for_quit_input(self) -> bool:
+        """Check for user input to quit monitoring (non-blocking)."""
+        try:
+            # Use asyncio to check for input without blocking
+            import termios
+            import tty
             
-            task = progress.add_task("Monitoring workflow...", total=None)
-            
-            while True:
+            # Check if stdin has data available
+            if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
+                # Read the input
                 try:
-                    status = await self.workflow_service.get_workflow_status(workflow_id)
+                    old_settings = termios.tcgetattr(sys.stdin)
+                    tty.setraw(sys.stdin.fileno())
+                    ch = sys.stdin.read(1)
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
                     
-                    if "error" in status:
-                        progress.update(task, description=f"Error: {status['error']}")
-                        break
-                    
-                    current_status = status.get("status", "unknown")
-                    current_phase = status.get("phase", "unknown")
-                    
-                    progress.update(task, description=f"Status: {current_status} | Phase: {current_phase}")
-                    
-                    if current_status in ["completed", "failed", "cancelled"]:
-                        break
-                    
-                    await asyncio.sleep(10)  # Check every 10 seconds
-                    
-                except KeyboardInterrupt:
-                    self.console.print("\n[yellow]Monitoring stopped (workflow continues in background)[/yellow]")
-                    break
-                except Exception as e:
-                    self.console.print(f"\n[red]Monitoring error: {e}[/red]")
-                    break
+                    if ch.lower() == 'q':
+                        # Consume any remaining newline
+                        try:
+                            if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
+                                sys.stdin.readline()
+                        except:
+                            pass
+                        return True
+                except:
+                    # If we can't set raw mode, fall back to line input
+                    line = sys.stdin.readline().strip()
+                    if line.lower() == 'q':
+                        return True
+                        
+        except Exception:
+            # If input checking fails, continue monitoring
+            pass
         
-        # Show final status
-        await self._show_workflow_status(workflow_id)
+        return False
+    
+    async def _handle_workflow_completion(self, workflow_id: str) -> bool:
+        """Handle workflow completion with user choices."""
+        try:
+            # Get final status
+            status = await self.workflow_service.get_workflow_status(workflow_id)
+            
+            if status.get("status") == "completed":
+                # Show completion summary
+                self._show_completion_summary(status)
+                
+                # Offer user choices
+                choice = Prompt.ask(
+                    "\n[yellow]What would you like to do next?[/yellow]",
+                    choices=["results", "new-workflow", "menu", "exit"],
+                    default="menu"
+                )
+                
+                if choice == "results":
+                    self._display_detailed_results(status.get("results", {}))
+                    
+                    # Ask again after showing results
+                    next_choice = Prompt.ask(
+                        "\n[yellow]Return to main menu?[/yellow]",
+                        choices=["yes", "new-workflow", "exit"],
+                        default="yes"
+                    )
+                    
+                    if next_choice == "new-workflow":
+                        return await self._start_new_workflow()
+                    elif next_choice == "exit":
+                        return False  # Exit CLI
+                    else:
+                        return True   # Return to menu
+                        
+                elif choice == "new-workflow":
+                    return await self._start_new_workflow()
+                elif choice == "exit":
+                    return False  # Exit CLI
+                else:  # menu
+                    return True   # Return to main menu
+                    
+            else:
+                # Workflow failed or was cancelled
+                self.console.print(f"\n[red]Workflow ended with status: {status.get('status', 'unknown')}[/red]")
+                
+                if Confirm.ask("\n[yellow]Return to main menu?[/yellow]", default=True):
+                    return True
+                else:
+                    return False  # Exit CLI
+                    
+        except Exception as e:
+            self.console.print(f"[red]Error handling completion: {e}[/red]")
+            return True  # Default to returning to main menu
+    
+    def _show_completion_summary(self, status: dict):
+        """Show a nice completion summary."""
+        results = status.get("results", {})
+        execution_time = status.get("execution_time", 0)
+        
+        # Create summary table
+        summary_table = Table(show_header=False, box=None, padding=(0, 1))
+        summary_table.add_column("Metric", style="cyan", width=20)
+        summary_table.add_column("Value", style="green")
+        
+        summary_table.add_row("⏱️  Execution Time", f"{execution_time:.1f} seconds")
+        summary_table.add_row("📊 Completion Status", "✅ Success")
+        
+        # Add result-specific metrics
+        if results.get("research"):
+            summary_table.add_row("📝 Standard Created", "✅ Yes")
+            
+        if results.get("analysis"):
+            analysis = results["analysis"]
+            total_samples = analysis.get("total_samples", 0)
+            if total_samples > 0:
+                compliance = analysis.get("overall_compliance", 0)
+                recommendations = analysis.get("aggregate_analysis", {}).get("total_recommendations", 0)
+                summary_table.add_row("🔍 Code Samples Analyzed", str(total_samples))
+                summary_table.add_row("📈 Average Compliance", f"{compliance:.1f}%")
+                summary_table.add_row("💡 Total Recommendations", str(recommendations))
+        
+        panel = Panel(
+            summary_table,
+            title="🎯 Workflow Completion Summary",
+            border_style="green"
+        )
+        self.console.print(panel)
+    
+    def _display_detailed_results(self, results: dict):
+        """Display detailed workflow results."""
+        self.console.print("\n[bold]📋 Detailed Workflow Results[/bold]")
+        
+        # Research results
+        if results.get("research"):
+            research = results["research"]
+            self.console.print(f"\n[cyan]🔬 Research Results:[/cyan]")
+            
+            if research.get("standard"):
+                standard = research["standard"]
+                self.console.print(f"  📄 Title: {standard.get('title', 'N/A')}")
+                self.console.print(f"  📂 Category: {standard.get('category', 'N/A')}")
+                self.console.print(f"  🏷️  Version: {standard.get('version', 'N/A')}")
+                
+                validation = standard.get("validation", {})
+                if validation:
+                    score = validation.get("score", 0)
+                    self.console.print(f"  ⭐ Quality Score: {score}/100")
+        
+        # Analysis results
+        if results.get("analysis"):
+            analysis = results["analysis"]
+            self.console.print(f"\n[cyan]🔍 Analysis Results:[/cyan]")
+            
+            individual_analyses = analysis.get("individual_analyses", [])
+            for i, sample_analysis in enumerate(individual_analyses):
+                compliance = sample_analysis.get("compliance_score", 0)
+                rec_count = len(sample_analysis.get("analysis", {}).get("recommendations", []))
+                self.console.print(f"  📄 Sample {i+1}: {compliance:.1f}% compliance, {rec_count} recommendations")
+        
+        # Feedback and next steps
+        if results.get("feedback"):
+            feedback_data = results["feedback"].get("feedback", {})
+            if feedback_data.get("next_steps"):
+                self.console.print(f"\n[cyan]🎯 Recommended Next Steps:[/cyan]")
+                for i, step in enumerate(feedback_data["next_steps"][:5], 1):
+                    self.console.print(f"  {i}. {step}")
+    
+    async def _start_new_workflow(self) -> bool:
+        """Quick start for a new workflow."""
+        self.console.print("\n[cyan]🚀 Quick Start New Workflow[/cyan]")
+        
+        # Get basic workflow request
+        request = Prompt.ask(
+            "[yellow]What would you like to research and analyze?[/yellow]\n"
+            "[dim](e.g., 'Python error handling standards', 'REST API security best practices')[/dim]"
+        )
+        
+        if not request:
+            self.console.print("[red]No request provided, returning to main menu[/red]")
+            return True
+        
+        try:
+            # Start the workflow
+            workflow_id = await self.workflow_service.start_research_to_analysis_workflow(
+                research_request=request,
+                code_samples=[],
+                project_context={}
+            )
+            
+            self.console.print(f"\n[green]✅ New workflow started: {workflow_id}[/green]")
+            
+            # Ask if they want to monitor this one too
+            if Confirm.ask("\n[yellow]Monitor this workflow?[/yellow]", default=True):
+                return await self._monitor_workflow_interactive(workflow_id)
+            else:
+                self.console.print(f"[dim]Use 'status {workflow_id}' to check progress later[/dim]")
+                return True  # Return to main menu
+                
+        except Exception as e:
+            self.console.print(f"[red]Failed to start workflow: {e}[/red]")
+            return True  # Return to main menu
     
     async def _show_workflow_status(self, workflow_id: str):
         """Show detailed workflow status."""
@@ -802,7 +1057,10 @@ class EnhancedCLI:
                     await self.handle_research_command()
                 
                 elif command == "workflow":
-                    await self.handle_workflow_command()
+                    should_continue = await self.handle_workflow_command()
+                    if not should_continue:
+                        self.console.print("\n[yellow]Exiting Enhanced CLI. Goodbye! 👋[/yellow]\n")
+                        break
                 
                 elif command == "analyze":
                     await self.handle_analyze_command()
