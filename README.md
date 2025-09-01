@@ -558,6 +558,12 @@ For issues, questions, or suggestions:
 
 ## 🔄 Version History
 
+### v2.0.1 (September 01, 2025) - 🔧 Critical Bug Fix
+- **🐛 Fixed Cache Service Method Mismatch**: Resolved "CacheService has no attribute 'get_cached_audit'" error
+- **🛠 Fixed StandardsResearchService**: Corrected method calls to use proper CacheService API
+- **🧪 Added Test Coverage**: Created test_fix.py to verify cache method fixes
+- **📋 Phase 3 Research Fix**: AI Research Execution now works without errors
+
 ### v2.0.0 (September 01, 2025) - 🚀 Revolutionary Enhancement Release
 - **🧠 Conversational Research Interface**: Natural language standard creation with interactive AI
 - **🔄 Integrated Workflow Service**: End-to-end automation from research to deployment

@@ -20,6 +20,7 @@ from services.gemini_service import GeminiService
 from services.neo4j_service import Neo4jService
 from services.cache_service import CacheService
 from config.settings import settings
+from utils.service_factory import get_neo4j_service, get_gemini_service, get_cache_service
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +35,9 @@ class StandardsResearchService:
         cache_service: Optional[CacheService] = None
     ):
         """Initialize the Standards Research Service."""
-        self.gemini = gemini_service or GeminiService()
-        self.neo4j = neo4j_service or Neo4jService()
-        self.cache = cache_service or CacheService()
+        self.gemini = gemini_service or get_gemini_service()
+        self.neo4j = neo4j_service or get_neo4j_service()
+        self.cache = cache_service or get_cache_service()
         
         # Research prompts cache
         self.research_prompts = {
@@ -174,7 +175,13 @@ class StandardsResearchService:
         try:
             # Check cache first
             cache_key = self._generate_cache_key(topic, category, context)
-            cached = await self.cache.get_cached_audit(cache_key)
+            # For cache lookup, we need to provide the required parameters to get_audit_result
+            # Since we don't have actual code here, we'll use topic as code content for caching
+            cached = await self.cache.get_audit_result(
+                code=topic,  # Using topic as cache key content
+                language=category,  # Using category as language
+                project_id="standards_research"
+            )
             if cached:
                 logger.info(f"Using cached research for {topic}")
                 return cached
@@ -198,7 +205,12 @@ class StandardsResearchService:
                 await self._store_standard_in_graph(standard)
             
             # Cache the result
-            await self.cache.cache_audit_result(cache_key, standard)
+            await self.cache.set_audit_result(
+                code=topic,  # Using topic as cache key content
+                language=category,  # Using category as language
+                result=standard,
+                project_id="standards_research"
+            )
             
             # Save to filesystem
             await self._save_standard_to_file(standard)
@@ -422,15 +434,15 @@ class StandardsResearchService:
     
     async def _queue_pattern_for_research(self, pattern: Dict[str, Any]) -> None:
         """Queue a discovered pattern for future research."""
-        # Store in cache or database for batch processing
+        # Store in cache using proper cache service methods
         queue_key = "pattern_research_queue"
-        current_queue = await self.cache.cache.get(queue_key) or []
+        current_queue = await self.cache.cache_manager.get(queue_key, namespace="patterns") or []
         current_queue.append({
             "pattern": pattern,
             "queued_at": datetime.now().isoformat(),
             "status": "pending"
         })
-        await self.cache.cache.set(queue_key, current_queue, ttl=86400)  # 24 hours
+        await self.cache.cache_manager.set(queue_key, current_queue, ttl=86400, namespace="patterns")  # 24 hours
     
     async def validate_standard(
         self,
