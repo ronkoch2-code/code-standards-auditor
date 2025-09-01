@@ -12,7 +12,8 @@ import structlog
 import time
 from typing import Dict, Any
 
-from api.routers import audit, standards, admin
+from api.routers import audit, standards, agent_optimized, workflow
+from services.integrated_workflow_service import IntegratedWorkflowService
 from api.middleware.auth import AuthMiddleware
 from api.middleware.logging import LoggingMiddleware
 from api.middleware.rate_limit import RateLimitMiddleware
@@ -71,6 +72,10 @@ async def lifespan(app: FastAPI):
         await app.state.cache.connect()
         logger.info("Redis cache connection established")
         
+        # Initialize integrated workflow service
+        app.state.workflow_service = IntegratedWorkflowService()
+        logger.info("Integrated workflow service initialized")
+        
     except Exception as e:
         logger.error("Failed to initialize services", error=str(e))
         raise
@@ -126,9 +131,12 @@ app.include_router(
     tags=["standards"]
 )
 app.include_router(
-    admin.router,
-    prefix="/api/v1/admin",
-    tags=["admin"]
+    agent_optimized.router,
+    tags=["agent-optimized"]
+)
+app.include_router(
+    workflow.router,
+    tags=["integrated-workflow"]
 )
 
 # Mount Prometheus metrics endpoint
