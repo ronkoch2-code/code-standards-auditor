@@ -11,12 +11,24 @@ import os
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
+# Configure logging FIRST
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    env_file = Path(__file__).parent.parent / '.env'
+    if env_file.exists():
+        load_dotenv(env_file)
+        logger.info(f"Loaded environment variables from {env_file}")
+    else:
+        logger.warning(f"No .env file found at {env_file}")
+except ImportError:
+    logger.warning("python-dotenv not installed, environment variables must be set manually")
 
 # Check for required packages before importing
 MISSING_PACKAGES = []
@@ -124,6 +136,7 @@ except ImportError as e:
         NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
         NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
         NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
+        NEO4J_DATABASE = os.environ.get("NEO4J_DATABASE", "neo4j")
         ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
     settings = Settings()
 
@@ -177,13 +190,25 @@ class CodeAuditorMCPServer:
         
         # Initialize Neo4j service
         try:
-            self.neo4j_service = Neo4jService()
-            if hasattr(self.neo4j_service, 'initialize'):
-                await self.neo4j_service.initialize()
-            if SERVICE_AVAILABLE['neo4j']:
+            if SERVICE_AVAILABLE['neo4j'] and settings.NEO4J_PASSWORD:
+                # Create Neo4j service with proper connection parameters
+                self.neo4j_service = Neo4jService(
+                    uri=settings.NEO4J_URI,
+                    user=settings.NEO4J_USER,
+                    password=settings.NEO4J_PASSWORD,
+                    database=settings.NEO4J_DATABASE
+                )
+                
+                # Test the connection
+                await self.neo4j_service.connect()
                 initialized.append("Neo4j")
             else:
-                warnings.append("Neo4j (using stub)")
+                # Use stub if not properly configured
+                self.neo4j_service = Neo4jServiceStub()
+                if not settings.NEO4J_PASSWORD:
+                    warnings.append("Neo4j (missing password - using stub)")
+                else:
+                    warnings.append("Neo4j (package missing - using stub)")
         except Exception as e:
             logger.error(f"Failed to initialize Neo4j service: {e}")
             failed.append(f"Neo4j: {e}")
