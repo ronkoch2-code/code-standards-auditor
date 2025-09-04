@@ -364,6 +364,39 @@ cp mcp/mcp_config.json ~/Library/Application\ Support/Claude/claude_desktop_conf
 
 See [`mcp/README.md`](mcp/README.md) for detailed setup and usage instructions.
 
+#### 🔧 **Troubleshooting MCP Server Issues**
+
+**Issue: "Unexpected non-whitespace character after JSON" in Claude Desktop logs**
+
+This error typically indicates a Pydantic validation error in the MCP server's tool definitions.
+
+**Solution Applied (September 2025):**
+- Fixed missing `"type": "object"` field in `check_status` tool's `inputSchema`
+- All MCP tools now comply with JSON Schema requirements
+- Server validates properly with Claude Desktop
+
+**Diagnostic Steps:**
+```bash
+# Test MCP server validation
+python3 mcp/test_server.py
+
+# Check server startup
+python3 mcp/server.py
+
+# Verify tool schemas
+python3 -c "from mcp.server import CodeAuditorMCPServer; server = CodeAuditorMCPServer()"
+```
+
+**Common Validation Errors:**
+- Missing `"type": "object"` in tool `inputSchema`
+- Invalid JSON structure in tool definitions
+- Pydantic model validation failures
+
+**If issues persist:**
+1. Check Claude Desktop logs: `~/Library/Logs/Claude/mcp.log`
+2. Verify all dependencies installed: `pip install mcp google-generativeai neo4j redis`
+3. Test individual components with diagnostic tools
+
 ## 📖 Usage Examples
 
 ### Basic Code Audit
@@ -557,6 +590,13 @@ For issues, questions, or suggestions:
 - Review the [API docs](http://localhost:8000/docs) when running locally
 
 ## 🔄 Version History
+
+### v2.0.2 (September 02, 2025) - 🔧 MCP Server Validation Fix
+- **🚨 CRITICAL: Fixed MCP Server Pydantic Validation Error** - Claude Desktop integration now works
+- **🐛 Tool Schema Fix**: Added missing `"type": "object"` field to `check_status` tool's `inputSchema`
+- **✅ JSON Schema Compliance**: All MCP tools now validate properly with Pydantic
+- **📋 Enhanced Documentation**: Added MCP troubleshooting guide with diagnostic steps
+- **🛠 Development State Tracking**: Added `DEVELOPMENT_STATE.md` for session management
 
 ### v2.0.1 (September 01, 2025) - 🔧 Comprehensive Workflow Fixes
 - **🚨 CRITICAL: Fixed 3 Major Workflow Errors** - Complete workflow now functional
