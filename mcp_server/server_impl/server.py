@@ -1,6 +1,6 @@
 """
 MCP Server for Code Standards Auditor
-Robust version with graceful handling of missing dependencies
+Fixed version with proper schema and error handling
 """
 
 import asyncio
@@ -11,22 +11,135 @@ import os
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
-# Configure logging FIRST
-logging.basicConfig(level=logging.INFO)
+# Configure logging FIRST - MUST go to stderr for MCP protocol!
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stderr,  # Critical: MCP requires stdout to be pure JSON
+    force=True  # Force reconfiguration of all loggers
+)
 logger = logging.getLogger(__name__)
 
-# Add parent directory to path for imports
-sys.path.append(str(Path(__file__).parent.parent))
+# Configure structlog to use stderr (Neo4j service uses structlog)
+# IMPORTANT: This must happen BEFORE importing any services that use structlog
+try:
+    import structlog
+    # Force structlog to use stdlib logging which we've configured for stderr
+    structlog.configure(
+        processors=[
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer()  # Use JSON renderer to avoid console output
+        ],
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
+except ImportError:
+    pass  # structlog not installed, that's fine
+
+# Silence or redirect any direct prints to stdout
+import contextlib
+import io
+
+# Create a context manager to suppress stdout during imports
+class StdoutSuppressor:
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        sys.stdout = io.StringIO()  # Capture stdout to a string buffer
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        captured = sys.stdout.getvalue()
+        sys.stdout = self._original_stdout
+        if captured:
+            # Log any captured output to stderr so we know what was suppressed
+            sys.stderr.write(f"[SUPPRESSED STDOUT]: {captured}\n")
+
+# Additional protection: redirect any accidental stdout writes to stderr
+# This prevents libraries from breaking MCP protocol
+class StdoutProtector:
+    """Redirects any stdout writes to stderr to protect MCP protocol"""
+    def __init__(self):
+        self.stderr = sys.stderr
+        self.original_stdout = sys.__stdout__
+        # Provide a buffer attribute for MCP library compatibility
+        self.buffer = self.original_stdout.buffer if hasattr(self.original_stdout, 'buffer') else self
+    
+    def write(self, data):
+        # For text writes, log to stderr instead
+        if isinstance(data, bytes):
+            # For binary writes, convert to string and log
+            self.stderr.write(f"[STDOUT-REDIRECT-BINARY] {data.decode('utf-8', errors='replace')}")
+        else:
+            # For text writes
+            self.stderr.write(f"[STDOUT-REDIRECT] {data}")
+        self.stderr.flush()
+        return len(data)  # Return number of bytes/chars written
+    
+    def flush(self):
+        self.stderr.flush()
+    
+    def fileno(self):
+        return self.stderr.fileno()
+    
+    def readable(self):
+        return False
+    
+    def writable(self):
+        return True
+    
+    def seekable(self):
+        return False
+
+# DON'T redirect stdout immediately - let MCP library have access to it
+# We'll only redirect stdout for specific problematic libraries
+# if __name__ == "__main__" or "mcp" in sys.argv[0]:
+#     sys.stdout = StdoutProtector()
+
+# Suppress Neo4j debug output that breaks MCP protocol
+# Neo4j driver creates many loggers that can pollute stdout
+neo4j_loggers = [
+    'neo4j',
+    'neo4j.bolt',
+    'neo4j.pool', 
+    'neo4j.io',
+    'neo4j.time',
+    'neo4j.routing',
+    'neo4j.work',
+    'neo4j.notifications',
+    'neo4j.debug',
+    'httpx',  # Neo4j driver uses httpx internally
+    'httpcore'  # httpx uses httpcore
+]
+
+for logger_name in neo4j_loggers:
+    logger_instance = logging.getLogger(logger_name)
+    logger_instance.setLevel(logging.ERROR)  # Only show errors
+    # Ensure no handlers write to stdout
+    for handler in logger_instance.handlers[:]:
+        if hasattr(handler, 'stream') and handler.stream == sys.stdout:
+            logger_instance.removeHandler(handler)
+
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
-    env_file = Path(__file__).parent.parent / '.env'
+    env_file = project_root / '.env'
     if env_file.exists():
         load_dotenv(env_file)
         logger.info(f"Loaded environment variables from {env_file}")
     else:
-        logger.warning(f"No .env file found at {env_file}")
+        logger.info(f"No .env file found at {env_file} - using system environment variables")
 except ImportError:
     logger.warning("python-dotenv not installed, environment variables must be set manually")
 
@@ -76,7 +189,7 @@ class Neo4jServiceStub:
     def __init__(self):
         logger.warning("Using Neo4jServiceStub - Neo4j not available")
     
-    async def initialize(self):
+    async def connect(self):
         pass
     
     async def get_standards(self, *args, **kwargs):
@@ -97,33 +210,35 @@ class CacheServiceStub:
         pass
 
 # Try to import services with graceful fallback
-try:
-    import google.generativeai as genai
-    from services.gemini_service import GeminiService
-    SERVICE_AVAILABLE['gemini'] = True
-except ImportError as e:
-    MISSING_PACKAGES.append("google-generativeai")
-    INSTALL_COMMANDS.append("pip install google-generativeai")
-    GeminiService = GeminiServiceStub
-    logger.warning(f"Gemini service unavailable: {e}")
+# Use stdout suppressor to prevent any output during imports
+with StdoutSuppressor():
+    try:
+        import google.generativeai as genai
+        from services.gemini_service import GeminiService
+        SERVICE_AVAILABLE['gemini'] = True
+    except ImportError as e:
+        MISSING_PACKAGES.append("google-generativeai")
+        INSTALL_COMMANDS.append("pip install google-generativeai")
+        GeminiService = GeminiServiceStub
+        logger.warning(f"Gemini service unavailable: {e}")
 
-try:
-    from services.neo4j_service import Neo4jService
-    SERVICE_AVAILABLE['neo4j'] = True
-except ImportError as e:
-    MISSING_PACKAGES.append("neo4j")
-    INSTALL_COMMANDS.append("pip install neo4j")
-    Neo4jService = Neo4jServiceStub
-    logger.warning(f"Neo4j service unavailable: {e}")
+    try:
+        from services.neo4j_service import Neo4jService
+        SERVICE_AVAILABLE['neo4j'] = True
+    except ImportError as e:
+        MISSING_PACKAGES.append("neo4j")
+        INSTALL_COMMANDS.append("pip install neo4j")
+        Neo4jService = Neo4jServiceStub
+        logger.warning(f"Neo4j service unavailable: {e}")
 
-try:
-    from services.cache_service import CacheService
-    SERVICE_AVAILABLE['cache'] = True
-except ImportError as e:
-    MISSING_PACKAGES.append("redis")
-    INSTALL_COMMANDS.append("pip install redis")
-    CacheService = CacheServiceStub
-    logger.warning(f"Cache service unavailable: {e}")
+    try:
+        from services.cache_service import CacheService
+        SERVICE_AVAILABLE['cache'] = True
+    except ImportError as e:
+        MISSING_PACKAGES.append("redis")
+        INSTALL_COMMANDS.append("pip install redis")
+        CacheService = CacheServiceStub
+        logger.warning(f"Cache service unavailable: {e}")
 
 try:
     from config.settings import settings
@@ -136,7 +251,7 @@ except ImportError as e:
         NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
         NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
         NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
-        NEO4J_DATABASE = os.environ.get("NEO4J_DATABASE", "neo4j")
+        NEO4J_DATABASE = os.environ.get("NEO4J_DATABASE", "code-standards")  # Use code-standards database
         ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
     settings = Settings()
 
@@ -190,25 +305,39 @@ class CodeAuditorMCPServer:
         
         # Initialize Neo4j service
         try:
-            if SERVICE_AVAILABLE['neo4j'] and settings.NEO4J_PASSWORD:
+            if SERVICE_AVAILABLE['neo4j']:
                 # Create Neo4j service with proper connection parameters
-                self.neo4j_service = Neo4jService(
-                    uri=settings.NEO4J_URI,
-                    user=settings.NEO4J_USER,
-                    password=settings.NEO4J_PASSWORD,
-                    database=settings.NEO4J_DATABASE
-                )
+                # Try default database first, then code-standards
+                databases_to_try = ["code-standards", "neo4j"]
+                connected = False
                 
-                # Test the connection
-                await self.neo4j_service.connect()
-                initialized.append("Neo4j")
+                for db_name in databases_to_try:
+                    try:
+                        self.neo4j_service = Neo4jService(
+                            uri=settings.NEO4J_URI,
+                            user=settings.NEO4J_USER,
+                            password=settings.NEO4J_PASSWORD,
+                            database=db_name
+                        )
+                        
+                        # Test the connection (suppress stdout during connection)
+                        with StdoutSuppressor():
+                            await self.neo4j_service.connect()
+                        initialized.append(f"Neo4j (database: {db_name})")
+                        connected = True
+                        break
+                    except Exception as db_error:
+                        logger.warning(f"Could not connect to database '{db_name}': {db_error}")
+                        continue
+                
+                if not connected:
+                    raise Exception("Could not connect to any Neo4j database")
+                    
             else:
-                # Use stub if not properly configured
+                # Use stub if package not available
                 self.neo4j_service = Neo4jServiceStub()
-                if not settings.NEO4J_PASSWORD:
-                    warnings.append("Neo4j (missing password - using stub)")
-                else:
-                    warnings.append("Neo4j (package missing - using stub)")
+                warnings.append("Neo4j (package missing - using stub)")
+                
         except Exception as e:
             logger.error(f"Failed to initialize Neo4j service: {e}")
             failed.append(f"Neo4j: {e}")
@@ -255,11 +384,11 @@ class CodeAuditorMCPServer:
             """List available tools for Claude Desktop"""
             tools = []
             
-            # Always provide diagnostic tool
+            # Always provide diagnostic tool - FIX: use inputSchema not input_schema
             tools.append(Tool(
                 name="check_status",
                 description="Check the status of the Code Standards Auditor services and get installation instructions",
-                input_schema={
+                inputSchema={
                     "type": "object",
                     "properties": {},
                     "required": []
@@ -271,7 +400,7 @@ class CodeAuditorMCPServer:
                 tools.append(Tool(
                     name="audit_code",
                     description="Audit code against coding standards (requires Gemini service)",
-                    input_schema={
+                    inputSchema={
                         "type": "object",
                         "properties": {
                             "code": {
@@ -295,7 +424,7 @@ class CodeAuditorMCPServer:
             tools.append(Tool(
                 name="get_standards",
                 description="Retrieve coding standards documentation",
-                input_schema={
+                inputSchema={
                     "type": "object",
                     "properties": {
                         "language": {
@@ -309,6 +438,18 @@ class CodeAuditorMCPServer:
             ))
             
             return tools
+        
+        # Add empty prompts handler to avoid "Method not found" error
+        @self.server.list_prompts()
+        async def list_prompts():
+            """List available prompts (currently empty)"""
+            return []
+        
+        # Add empty resources handler to avoid "Method not found" error
+        @self.server.list_resources()
+        async def list_resources():
+            """List available resources (currently empty)"""
+            return []
         
         @self.server.call_tool()
         async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
@@ -341,10 +482,13 @@ class CodeAuditorMCPServer:
         """Check the status of all services"""
         status = {
             "server": "running",
+            "version": "1.13.1-fixed",
             "services": self.service_status,
             "environment": {
                 "gemini_api_key_set": bool(settings.GEMINI_API_KEY),
                 "neo4j_password_set": bool(settings.NEO4J_PASSWORD),
+                "neo4j_uri": settings.NEO4J_URI,
+                "neo4j_database": settings.NEO4J_DATABASE,
                 "anthropic_api_key_set": bool(getattr(settings, 'ANTHROPIC_API_KEY', ''))
             }
         }
@@ -353,7 +497,17 @@ class CodeAuditorMCPServer:
             status["installation_required"] = {
                 "missing_packages": MISSING_PACKAGES,
                 "install_command": f"pip install {' '.join(MISSING_PACKAGES)}",
-                "or_use_requirements": "pip install -r /Volumes/FS001/pythonscripts/code-standards-auditor/mcp/requirements_mcp.txt"
+                "or_use_requirements": "pip install -r /Volumes/FS001/pythonscripts/code-standards-auditor/requirements.txt"
+            }
+        
+        # Add Neo4j connection troubleshooting if it failed
+        if any("Neo4j" in fail for fail in self.service_status.get('failed', [])):
+            status["neo4j_troubleshooting"] = {
+                "check_service": "Check if Neo4j is running: 'brew services list | grep neo4j'",
+                "start_service": "Start Neo4j: 'brew services start neo4j'",
+                "verify_password": "Default password is usually 'neo4j', change it in Neo4j browser",
+                "browser_url": "http://localhost:7474",
+                "create_database": "In Neo4j browser: ':use system' then 'CREATE DATABASE `code-standards`'"
             }
         
         return status
@@ -372,7 +526,7 @@ class CodeAuditorMCPServer:
         language = args.get("language")
         project_id = args.get("project_id", "default")
         
-        # Basic validation without Gemini
+        # Basic validation
         if not code:
             return {"error": "No code provided"}
         
@@ -446,7 +600,7 @@ class CodeAuditorMCPServer:
     
     async def run(self):
         """Run the MCP server"""
-        logger.info("Starting Code Standards Auditor MCP Server...")
+        logger.info("Starting Code Standards Auditor MCP Server (Fixed Version)...")
         
         # Initialize services
         status = await self.initialize_services()
