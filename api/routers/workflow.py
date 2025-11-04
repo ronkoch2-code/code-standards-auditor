@@ -11,8 +11,9 @@ Version: 1.0.0
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import logging
+import json
 
-from fastapi import APIRouter, HTTPException, Depends, Body, BackgroundTasks, Query
+from fastapi import APIRouter, HTTPException, Depends, Body, BackgroundTasks, Query, Request
 from pydantic import BaseModel, Field
 
 from services.integrated_workflow_service import IntegratedWorkflowService, WorkflowStatus
@@ -27,8 +28,13 @@ router = APIRouter(
     responses={404: {"description": "Not found"}}
 )
 
-# Initialize service
-workflow_service = IntegratedWorkflowService()
+
+# Dependency injection function
+def get_workflow_service(request: Request) -> IntegratedWorkflowService:
+    """Get or create workflow service from app state"""
+    if not hasattr(request.app.state, 'workflow_service'):
+        request.app.state.workflow_service = IntegratedWorkflowService()
+    return request.app.state.workflow_service
 
 
 # Pydantic models
@@ -56,11 +62,12 @@ class WorkflowStatusResponse(BaseModel):
 @router.post("/start", response_model=Dict[str, str])
 async def start_workflow(
     request: WorkflowStartRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    workflow_service: IntegratedWorkflowService = Depends(get_workflow_service)
 ):
     """
     Start a new integrated workflow from research request to code analysis.
-    
+
     This endpoint initiates a complete workflow that:
     1. Researches and creates coding standards based on the request
     2. Generates comprehensive documentation
@@ -71,42 +78,45 @@ async def start_workflow(
     """
     try:
         logger.info(f"Starting integrated workflow: {request.research_request[:100]}...")
-        
+
         workflow_id = await workflow_service.start_research_to_analysis_workflow(
             research_request=request.research_request,
             code_samples=request.code_samples,
             project_context=request.project_context,
             user_preferences=request.user_preferences
         )
-        
+
         return {
             "workflow_id": workflow_id,
             "status": "started",
             "message": "Integrated workflow started successfully",
             "estimated_completion": "5-15 minutes depending on complexity"
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to start workflow: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{workflow_id}/status", response_model=WorkflowStatusResponse)
-async def get_workflow_status(workflow_id: str):
+async def get_workflow_status(
+    workflow_id: str,
+    workflow_service: IntegratedWorkflowService = Depends(get_workflow_service)
+):
     """
     Get the current status of a workflow.
-    
+
     Returns detailed information about the workflow progress,
     current phase, and any available results.
     """
     try:
         status = await workflow_service.get_workflow_status(workflow_id)
-        
+
         if "error" in status:
             raise HTTPException(status_code=404, detail=status["error"])
-        
+
         return WorkflowStatusResponse(**status)
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -115,25 +125,28 @@ async def get_workflow_status(workflow_id: str):
 
 
 @router.delete("/{workflow_id}/cancel")
-async def cancel_workflow(workflow_id: str):
+async def cancel_workflow(
+    workflow_id: str,
+    workflow_service: IntegratedWorkflowService = Depends(get_workflow_service)
+):
     """
     Cancel an active workflow.
-    
+
     Stops the workflow execution if it's still in progress.
     Completed workflows cannot be cancelled.
     """
     try:
         result = await workflow_service.cancel_workflow(workflow_id)
-        
+
         if not result.get("success", False):
             raise HTTPException(status_code=404, detail=result.get("message", "Workflow not found"))
-        
+
         return {
             "success": True,
             "message": result["message"],
             "workflow_id": workflow_id
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -142,10 +155,13 @@ async def cancel_workflow(workflow_id: str):
 
 
 @router.get("/{workflow_id}/results")
-async def get_workflow_results(workflow_id: str):
+async def get_workflow_results(
+    workflow_id: str,
+    workflow_service: IntegratedWorkflowService = Depends(get_workflow_service)
+):
     """
     Get the complete results of a completed workflow.
-    
+
     Returns all outputs from the workflow including:
     - Generated standards
     - Documentation packages
@@ -156,16 +172,16 @@ async def get_workflow_results(workflow_id: str):
     """
     try:
         status = await workflow_service.get_workflow_status(workflow_id)
-        
+
         if "error" in status:
             raise HTTPException(status_code=404, detail=status["error"])
-        
+
         if status.get("status") != WorkflowStatus.COMPLETED.value:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail=f"Workflow is not completed. Current status: {status.get('status')}"
             )
-        
+
         return {
             "workflow_id": workflow_id,
             "results": status.get("results", {}),
@@ -175,7 +191,7 @@ async def get_workflow_results(workflow_id: str):
                 "phases_completed": len(status.get("results", {}))
             }
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -186,11 +202,12 @@ async def get_workflow_results(workflow_id: str):
 @router.get("/{workflow_id}/report")
 async def get_workflow_report(
     workflow_id: str,
+    workflow_service: IntegratedWorkflowService = Depends(get_workflow_service),
     format: str = Query(default="json", description="Report format: json, markdown, pdf")
 ):
     """
     Get a formatted report of the workflow execution and results.
-    
+
     Available formats:
     - json: Structured JSON report
     - markdown: Human-readable markdown report
@@ -198,16 +215,16 @@ async def get_workflow_report(
     """
     try:
         status = await workflow_service.get_workflow_status(workflow_id)
-        
+
         if "error" in status:
             raise HTTPException(status_code=404, detail=status["error"])
-        
+
         if status.get("status") != WorkflowStatus.COMPLETED.value:
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot generate report for incomplete workflow. Status: {status.get('status')}"
             )
-        
+
         # Generate report based on format
         if format.lower() == "json":
             return await _generate_json_report(workflow_id, status)
@@ -219,7 +236,7 @@ async def get_workflow_report(
             raise HTTPException(status_code=501, detail="PDF reports not yet implemented")
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported format: {format}")
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -251,16 +268,18 @@ async def list_active_workflows(
 
 
 @router.get("/statistics")
-async def get_workflow_statistics():
+async def get_workflow_statistics(
+    workflow_service: IntegratedWorkflowService = Depends(get_workflow_service)
+):
     """
     Get workflow execution statistics.
-    
+
     Returns aggregate statistics about workflow usage and performance.
     """
     try:
         stats = workflow_service.get_service_statistics()
         return stats
-        
+
     except Exception as e:
         logger.error(f"Failed to get workflow statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -353,10 +372,12 @@ This workflow successfully completed the integrated standards research and analy
 
 
 @router.get("/health")
-async def workflow_health_check():
+async def workflow_health_check(
+    workflow_service: IntegratedWorkflowService = Depends(get_workflow_service)
+):
     """Health check for workflow service."""
     stats = workflow_service.get_service_statistics()
-    
+
     return {
         "status": "healthy",
         "service": "integrated_workflow",

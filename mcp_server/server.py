@@ -63,15 +63,19 @@ if env_file.exists():
 else:
     print(f"[Launcher] ERROR: .env file not found at {env_file}")
 
-# If .env didn't load, try to set from hardcoded values as fallback
+# If .env didn't load, warn but continue (server will use defaults)
 if not env_loaded:
-    print("[Launcher] WARNING: Using fallback credentials")
-    # Set the credentials directly
-    os.environ['NEO4J_PASSWORD'] = 'M@ry1and2'
-    os.environ['NEO4J_URI'] = 'bolt://localhost:7687'
-    os.environ['NEO4J_USER'] = 'neo4j'
-    os.environ['NEO4J_DATABASE'] = 'neo4j'  # Use default database
-    print("[Launcher] Set fallback environment variables")
+    print("[Launcher] WARNING: Could not load credentials from .env file")
+    print("[Launcher] Please ensure .env file exists with NEO4J_PASSWORD set")
+    print("[Launcher] Server will start with limited functionality")
+    # Set default connection parameters (without password)
+    if not os.getenv('NEO4J_URI'):
+        os.environ['NEO4J_URI'] = 'bolt://localhost:7687'
+    if not os.getenv('NEO4J_USER'):
+        os.environ['NEO4J_USER'] = 'neo4j'
+    if not os.getenv('NEO4J_DATABASE'):
+        os.environ['NEO4J_DATABASE'] = 'neo4j'
+    print("[Launcher] Set default environment variables (Neo4j features will be disabled)")
 
 # Add paths for imports
 server_dir = mcp_server_dir / 'server_impl'

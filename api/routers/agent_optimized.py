@@ -16,7 +16,7 @@ import hashlib
 import json
 from enum import Enum
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Body, BackgroundTasks, Header
+from fastapi import APIRouter, HTTPException, Depends, Query, Body, BackgroundTasks, Header, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, validator
 import asyncio
@@ -36,11 +36,30 @@ router = APIRouter(
     responses={404: {"description": "Not found"}}
 )
 
-# Initialize services
-research_service = StandardsResearchService()
-recommendations_service = RecommendationsService()
-neo4j_service = Neo4jService() if settings.USE_NEO4J else None
-cache_service = CacheService() if settings.USE_CACHE else None
+
+# Dependency injection functions
+def get_research_service(request: Request) -> StandardsResearchService:
+    """Get or create research service from app state"""
+    if not hasattr(request.app.state, 'research_service'):
+        request.app.state.research_service = StandardsResearchService()
+    return request.app.state.research_service
+
+
+def get_recommendations_service(request: Request) -> RecommendationsService:
+    """Get or create recommendations service from app state"""
+    if not hasattr(request.app.state, 'recommendations_service'):
+        request.app.state.recommendations_service = RecommendationsService()
+    return request.app.state.recommendations_service
+
+
+def get_neo4j_service(request: Request) -> Optional[Neo4jService]:
+    """Get Neo4j service from app state (may be None if not configured)"""
+    return getattr(request.app.state, 'neo4j', None)
+
+
+def get_cache_service(request: Request) -> Optional[CacheService]:
+    """Get cache service from app state (may be None if not configured)"""
+    return getattr(request.app.state, 'cache', None)
 
 
 class AgentContextType(str, Enum):
@@ -152,24 +171,28 @@ class StandardSearchResult(BaseModel):
 async def analyze_code_for_agent(
     request: CodeAnalysisRequest,
     background_tasks: BackgroundTasks,
+    recommendations_service: RecommendationsService = Depends(get_recommendations_service),
+    neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service),
+    cache_service: Optional[CacheService] = Depends(get_cache_service),
     x_agent_version: Optional[str] = Header(None)
 ):
     """
     Analyze code against applicable standards with agent-optimized output.
-    
+
     This endpoint provides comprehensive code analysis specifically formatted
     for AI agent consumption, including actionable recommendations and metrics.
     """
     try:
         logger.info(f"Agent code analysis for {request.language} code, context: {request.context.context_type}")
-        
+
         # Get applicable standards based on context
         applicable_standards = await get_applicable_standards(
             language=request.language,
             context=request.context,
-            code_sample=request.code
+            code_sample=request.code,
+            neo4j_service=neo4j_service
         )
-        
+
         # Perform analysis
         analysis_result = await recommendations_service.generate_recommendations(
             code=request.code,
@@ -182,24 +205,25 @@ async def analyze_code_for_agent(
                 "analysis_depth": request.analysis_depth
             }
         )
-        
+
         # Convert to agent-optimized format
         agent_result = convert_to_agent_format(
             analysis_result,
             applicable_standards,
             request.context
         )
-        
+
         # Schedule background learning task
         background_tasks.add_task(
             learn_from_analysis,
             request.context.session_id,
             request.code,
-            agent_result
+            agent_result,
+            cache_service
         )
-        
+
         return agent_result
-        
+
     except Exception as e:
         logger.error(f"Agent code analysis failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -208,27 +232,29 @@ async def analyze_code_for_agent(
 @router.post("/search-standards", response_model=StandardSearchResult)
 async def search_standards_for_agent(
     request: StandardsSearchRequest,
+    neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service),
     x_agent_id: Optional[str] = Header(None)
 ):
     """
     Enhanced standards search optimized for agent consumption.
-    
+
     Provides context-aware search with relevance scoring and related suggestions.
     """
     try:
         logger.info(f"Agent standards search: '{request.query}' for context: {request.context.context_type}")
-        
+
         # Build search context
         search_context = build_search_context(request.context, request.filters)
-        
+
         # Execute enhanced search
         search_results = await execute_enhanced_search(
             query=request.query,
             context=search_context,
             max_results=request.max_results,
-            relevance_threshold=request.relevance_threshold
+            relevance_threshold=request.relevance_threshold,
+            neo4j_service=neo4j_service
         )
-        
+
         # Add related standards if requested
         if request.include_related:
             related_standards = await find_related_standards(
@@ -236,15 +262,15 @@ async def search_standards_for_agent(
                 request.context
             )
             search_results["related"] = related_standards
-        
+
         # Format for agent consumption
         agent_search_result = format_search_results_for_agent(
             search_results,
             request.context
         )
-        
+
         return agent_search_result
-        
+
     except Exception as e:
         logger.error(f"Agent standards search failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -442,7 +468,8 @@ async def get_context_aware_standards(
 async def get_applicable_standards(
     language: str,
     context: AgentContext,
-    code_sample: Optional[str] = None
+    code_sample: Optional[str] = None,
+    neo4j_service: Optional[Neo4jService] = None
 ) -> List[Dict[str, Any]]:
     """Get standards applicable to the given context."""
     try:
@@ -452,21 +479,21 @@ async def get_applicable_standards(
             "context_type": context.context_type.value,
             "agent_type": context.agent_type
         }
-        
+
         # Add code-based criteria if available
         if code_sample and neo4j_service:
             code_patterns = await analyze_code_patterns(code_sample, language)
             criteria["patterns"] = code_patterns
-        
+
         # Search for applicable standards
         if neo4j_service:
             standards = await neo4j_service.find_standards_by_criteria(criteria)
         else:
             # Fallback to basic search
             standards = await basic_standards_search(criteria)
-        
+
         return standards
-        
+
     except Exception as e:
         logger.error(f"Error getting applicable standards: {e}")
         return []
@@ -555,7 +582,8 @@ async def execute_enhanced_search(
     query: str,
     context: Dict[str, Any],
     max_results: int,
-    relevance_threshold: float
+    relevance_threshold: float,
+    neo4j_service: Optional[Neo4jService] = None
 ) -> Dict[str, Any]:
     """Execute enhanced search with context awareness."""
     try:
@@ -570,9 +598,9 @@ async def execute_enhanced_search(
         else:
             # Fallback to basic search
             results = await basic_semantic_search(query, context, max_results)
-        
+
         return results
-        
+
     except Exception as e:
         logger.error(f"Enhanced search failed: {e}")
         return {"results": [], "metadata": {}}
@@ -643,13 +671,14 @@ def count_examples(standard: Dict[str, Any]) -> int:
 async def learn_from_analysis(
     session_id: Optional[str],
     code: str,
-    analysis_result: CodeAnalysisResult
+    analysis_result: CodeAnalysisResult,
+    cache_service: Optional[CacheService] = None
 ):
     """Learn from analysis results to improve future recommendations."""
     try:
         if not session_id or not cache_service:
             return
-        
+
         # Store learning data
         learning_data = {
             "session_id": session_id,
@@ -657,22 +686,25 @@ async def learn_from_analysis(
             "analysis_result": analysis_result.dict(),
             "timestamp": datetime.now().isoformat()
         }
-        
+
         await cache_service.set(
             f"learning:analysis:{session_id}",
             learning_data,
             ttl=86400  # 24 hours
         )
-        
+
         logger.info(f"Stored learning data for session {session_id}")
-        
+
     except Exception as e:
         logger.error(f"Failed to store learning data: {e}")
 
 
 # Health check for agent endpoints
 @router.get("/health")
-async def agent_health_check():
+async def agent_health_check(
+    neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service),
+    cache_service: Optional[CacheService] = Depends(get_cache_service)
+):
     """Health check for agent-optimized endpoints."""
     return {
         "status": "healthy",
