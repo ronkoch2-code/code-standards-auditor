@@ -36,7 +36,8 @@ settings = Settings()
 async def get_gemini_service(request: Request) -> GeminiService:
     """Dependency to get Gemini service"""
     if not hasattr(request.app.state, 'gemini'):
-        request.app.state.gemini = GeminiService(api_key=settings.GEMINI_API_KEY)
+        # GeminiService gets API key from environment variables
+        request.app.state.gemini = GeminiService()
     return request.app.state.gemini
 
 

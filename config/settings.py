@@ -146,19 +146,20 @@ class Settings(BaseSettings):
         env_use_neo4j = os.environ.get("USE_NEO4J")
         if env_use_neo4j is not None:
             return env_use_neo4j.lower() in ("true", "1", "yes", "on")
-        
+
         # Auto-detect based on configuration
         neo4j_password = values.get("NEO4J_PASSWORD", "")
         neo4j_uri = values.get("NEO4J_URI", "")
-        
+
         # Enable Neo4j if we have both URI and password configured
-        should_use = bool(neo4j_password and neo4j_uri and neo4j_uri != "bolt://localhost:7687")
-        
+        # Allow localhost for development/testing
+        should_use = bool(neo4j_password and neo4j_uri)
+
         if should_use:
             import logging
             logger = logging.getLogger(__name__)
             logger.info("Neo4j configuration detected - enabling Neo4j features")
-        
+
         return should_use
     
     @validator("CORS_ORIGINS", pre=True)
