@@ -406,10 +406,11 @@ class ConversationalResearchInterface:
                 self.console.print(f"\n[green]✓ Example {len(examples)} added ({example_type})[/green]")
                 if code:
                     try:
-                        self.console.print(Syntax(code[:200] + "..." if len(code) > 200 else code, 
-                                                language if language != "auto" else "text", 
+                        self.console.print(Syntax(code[:200] + "..." if len(code) > 200 else code,
+                                                language if language != "auto" else "text",
                                                 theme="monokai"))
-                    except:
+                    except (ValueError, TypeError, AttributeError) as e:
+                        # Fall back to plain text if syntax highlighting fails
                         self.console.print(f"[dim]{code[:100]}...[/dim]")
         
         return examples
@@ -603,12 +604,13 @@ class ConversationalResearchInterface:
             self.console.print("\n" + "="*80)
             self.console.print(f"[bold]📄 Complete Standard: {standard.get('title', 'Untitled')}[/bold]")
             self.console.print("="*80)
-            
+
             try:
                 self.console.print(Markdown(content))
-            except:
+            except (ValueError, TypeError, AttributeError) as e:
+                # Fall back to plain text if markdown rendering fails
                 self.console.print(content)
-            
+
             self.console.print("="*80)
         else:
             self.console.print("[red]No content available[/red]")
@@ -688,7 +690,8 @@ class ConversationalResearchInterface:
             parts = version.split(".")
             parts[-1] = str(int(parts[-1]) + 1)
             return ".".join(parts)
-        except:
+        except (ValueError, IndexError, AttributeError) as e:
+            # Fall back to default version if parsing fails
             return "1.0.1"
     
     async def finalize_standard(self, standard: Dict[str, Any]) -> Optional[Path]:

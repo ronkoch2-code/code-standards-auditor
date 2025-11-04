@@ -1,0 +1,101 @@
+#!/bin/bash
+# Pre-commit hook to prevent committing sensitive information
+# Install: ln -s ../../.githooks/pre-commit .git/hooks/pre-commit
+
+set -e
+
+echo "Running pre-commit security checks..."
+
+# Check for hardcoded credentials
+check_credentials() {
+    local patterns=(
+        "password\s*=\s*['\"][^'\"]{3,}['\"]"
+        "api[_-]?key\s*=\s*['\"][^'\"]{10,}['\"]"
+        "secret\s*=\s*['\"][^'\"]{10,}['\"]"
+        "token\s*=\s*['\"][^'\"]{10,}['\"]"
+        "NEO4J_PASSWORD\s*=\s*['\"][^'\"]+['\"]"
+        "GEMINI_API_KEY\s*=\s*['\"][^'\"]+['\"]"
+        "ANTHROPIC_API_KEY\s*=\s*['\"][^'\"]+['\"]"
+    )
+
+    local found=0
+
+    for pattern in "${patterns[@]}"; do
+        if git diff --cached --diff-filter=d | grep -iE "$pattern" > /dev/null 2>&1; then
+            echo "⚠️  WARNING: Potential hardcoded credential found matching pattern: $pattern"
+            git diff --cached --diff-filter=d | grep -iE "$pattern" --color=always
+            found=1
+        fi
+    done
+
+    return $found
+}
+
+# Check for .env file commit
+check_env_file() {
+    if git diff --cached --name-only | grep -E "^\.env$" > /dev/null 2>&1; then
+        echo "❌ ERROR: Attempting to commit .env file with credentials!"
+        echo "   Remove .env from commit with: git reset HEAD .env"
+        return 1
+    fi
+    return 0
+}
+
+# Check for common credential patterns in specific files
+check_specific_files() {
+    local suspicious_files=(
+        "mcp_server/server.py"
+        "config/settings.py"
+        "services/*.py"
+    )
+
+    local found=0
+
+    for file_pattern in "${suspicious_files[@]}"; do
+        for file in $(git diff --cached --name-only | grep "$file_pattern" 2>/dev/null); do
+            if [ -f "$file" ]; then
+                # Check for assignment of credentials
+                if grep -E "(PASSWORD|API_KEY|SECRET|TOKEN)\s*=\s*['\"][a-zA-Z0-9]{8,}['\"]" "$file" > /dev/null 2>&1; then
+                    echo "⚠️  WARNING: Potential credential in $file"
+                    grep -n -E "(PASSWORD|API_KEY|SECRET|TOKEN)\s*=\s*['\"][a-zA-Z0-9]{8,}['\"]" "$file" --color=always
+                    found=1
+                fi
+            fi
+        done
+    done
+
+    return $found
+}
+
+# Run checks
+echo "Checking for .env file..."
+if ! check_env_file; then
+    exit 1
+fi
+
+echo "Checking for hardcoded credentials..."
+credential_found=0
+if ! check_credentials; then
+    credential_found=1
+fi
+
+echo "Checking specific files for credentials..."
+if ! check_specific_files; then
+    credential_found=1
+fi
+
+if [ $credential_found -eq 1 ]; then
+    echo ""
+    echo "❌ COMMIT BLOCKED: Potential credentials detected"
+    echo ""
+    echo "If this is a false positive, you can:"
+    echo "1. Review the warnings above"
+    echo "2. Remove actual credentials from your code"
+    echo "3. Use environment variables instead"
+    echo "4. Bypass this hook with: git commit --no-verify (NOT RECOMMENDED)"
+    echo ""
+    exit 1
+fi
+
+echo "✅ Security checks passed"
+exit 0

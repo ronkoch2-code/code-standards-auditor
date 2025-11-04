@@ -638,16 +638,17 @@ class EnhancedCLI:
                     tty.setraw(sys.stdin.fileno())
                     ch = sys.stdin.read(1)
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-                    
+
                     if ch.lower() == 'q':
                         # Consume any remaining newline
                         try:
                             if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
                                 sys.stdin.readline()
-                        except:
+                        except (OSError, ValueError, IOError):
+                            # Ignore errors reading remaining input
                             pass
                         return True
-                except:
+                except (termios.error, OSError, ValueError, AttributeError):
                     # If we can't set raw mode, fall back to line input
                     line = sys.stdin.readline().strip()
                     if line.lower() == 'q':

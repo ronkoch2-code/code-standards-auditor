@@ -12,7 +12,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Body, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, Query, Body, BackgroundTasks, Request
 from pydantic import BaseModel, Field
 
 from services.standards_research_service import StandardsResearchService
@@ -30,11 +30,30 @@ router = APIRouter(
     responses={404: {"description": "Not found"}}
 )
 
-# Initialize services
-research_service = StandardsResearchService()
-recommendations_service = RecommendationsService()
-neo4j_service = Neo4jService() if settings.USE_NEO4J else None
-cache_service = CacheService() if settings.USE_CACHE else None
+
+# Dependency injection functions
+def get_research_service(request: Request) -> StandardsResearchService:
+    """Get or create research service from app state"""
+    if not hasattr(request.app.state, 'research_service'):
+        request.app.state.research_service = StandardsResearchService()
+    return request.app.state.research_service
+
+
+def get_recommendations_service(request: Request) -> RecommendationsService:
+    """Get or create recommendations service from app state"""
+    if not hasattr(request.app.state, 'recommendations_service'):
+        request.app.state.recommendations_service = RecommendationsService()
+    return request.app.state.recommendations_service
+
+
+def get_neo4j_service(request: Request) -> Optional[Neo4jService]:
+    """Get Neo4j service from app state (may be None if not configured)"""
+    return getattr(request.app.state, 'neo4j', None)
+
+
+def get_cache_service(request: Request) -> Optional[CacheService]:
+    """Get cache service from app state (may be None if not configured)"""
+    return getattr(request.app.state, 'cache', None)
 
 
 # Pydantic models for request/response
@@ -115,17 +134,18 @@ class StandardUpdateRequest(BaseModel):
 @router.post("/research", response_model=StandardResearchResponse)
 async def research_standard(
     request: StandardResearchRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    research_service: StandardsResearchService = Depends(get_research_service)
 ):
     """
     Research and generate a new coding standard.
-    
+
     This endpoint uses AI to research and create comprehensive coding standards
     based on the provided topic and context.
     """
     try:
         logger.info(f"Researching standard for topic: {request.topic}")
-        
+
         # Perform research
         standard = await research_service.research_standard(
             topic=request.topic,
@@ -156,16 +176,20 @@ async def research_standard(
 
 
 @router.post("/recommendations", response_model=RecommendationsResponse)
-async def get_recommendations(request: RecommendationsRequest):
+async def get_recommendations(
+    request: RecommendationsRequest,
+    recommendations_service: RecommendationsService = Depends(get_recommendations_service),
+    neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service)
+):
     """
     Generate improvement recommendations for code.
-    
+
     Analyzes the provided code against standards and generates
     prioritized recommendations for improvements.
     """
     try:
         logger.info(f"Generating recommendations for {request.language} code")
-        
+
         # Get standards if specific IDs provided
         standards = None
         if request.standards_ids and neo4j_service:
@@ -174,7 +198,7 @@ async def get_recommendations(request: RecommendationsRequest):
                 std = await neo4j_service.get_standard(std_id)
                 if std:
                     standards.append(std)
-        
+
         # Generate recommendations
         result = await recommendations_service.generate_recommendations(
             code=request.code,
@@ -192,16 +216,19 @@ async def get_recommendations(request: RecommendationsRequest):
 
 
 @router.post("/discover-patterns")
-async def discover_patterns(request: PatternDiscoveryRequest):
+async def discover_patterns(
+    request: PatternDiscoveryRequest,
+    research_service: StandardsResearchService = Depends(get_research_service)
+):
     """
     Discover patterns from code samples that could become standards.
-    
+
     Analyzes multiple code samples to identify common patterns,
     anti-patterns, and opportunities for standardization.
     """
     try:
         logger.info(f"Discovering patterns from {len(request.code_samples)} samples")
-        
+
         patterns = await research_service.discover_patterns(
             code_samples=request.code_samples,
             language=request.language
@@ -226,10 +253,13 @@ async def discover_patterns(request: PatternDiscoveryRequest):
 
 
 @router.post("/quick-fixes")
-async def get_quick_fixes(request: QuickFixRequest):
+async def get_quick_fixes(
+    request: QuickFixRequest,
+    recommendations_service: RecommendationsService = Depends(get_recommendations_service)
+):
     """
     Get quick fixes for common issues in code.
-    
+
     Provides immediate, actionable fixes that can be applied
     without major refactoring.
     """
@@ -252,10 +282,13 @@ async def get_quick_fixes(request: QuickFixRequest):
 
 
 @router.post("/refactoring-plan")
-async def create_refactoring_plan(request: RefactoringPlanRequest):
+async def create_refactoring_plan(
+    request: RefactoringPlanRequest,
+    recommendations_service: RecommendationsService = Depends(get_recommendations_service)
+):
     """
     Generate a comprehensive refactoring plan for code.
-    
+
     Creates a detailed, phased plan for refactoring code
     to meet specific goals and standards.
     """
@@ -274,10 +307,13 @@ async def create_refactoring_plan(request: RefactoringPlanRequest):
 
 
 @router.post("/validate")
-async def validate_standard(request: StandardValidationRequest):
+async def validate_standard(
+    request: StandardValidationRequest,
+    research_service: StandardsResearchService = Depends(get_research_service)
+):
     """
     Validate a proposed standard for quality and completeness.
-    
+
     Evaluates the standard against quality criteria and provides
     improvement suggestions.
     """
@@ -299,11 +335,12 @@ async def list_standards(
     category: Optional[str] = Query(None, description="Filter by category"),
     status: Optional[str] = Query(None, description="Filter by status"),
     limit: int = Query(50, description="Maximum number of results"),
-    offset: int = Query(0, description="Offset for pagination")
+    offset: int = Query(0, description="Offset for pagination"),
+    neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service)
 ):
     """
     List available coding standards.
-    
+
     Returns a paginated list of standards with optional filtering.
     """
     try:
@@ -338,10 +375,13 @@ async def list_standards(
 
 
 @router.get("/{standard_id}")
-async def get_standard(standard_id: str):
+async def get_standard(
+    standard_id: str,
+    neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service)
+):
     """
     Get a specific standard by ID.
-    
+
     Returns the full details of a coding standard.
     """
     try:
@@ -365,11 +405,13 @@ async def get_standard(standard_id: str):
 @router.put("/{standard_id}")
 async def update_standard(
     standard_id: str,
-    request: StandardUpdateRequest
+    request: StandardUpdateRequest,
+    neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service),
+    cache_service: Optional[CacheService] = Depends(get_cache_service)
 ):
     """
     Update an existing standard.
-    
+
     Allows updating content, version, and metadata of a standard.
     """
     try:
@@ -411,10 +453,14 @@ async def update_standard(
 
 
 @router.delete("/{standard_id}")
-async def delete_standard(standard_id: str):
+async def delete_standard(
+    standard_id: str,
+    neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service),
+    cache_service: Optional[CacheService] = Depends(get_cache_service)
+):
     """
     Delete a standard.
-    
+
     Marks a standard as deleted (soft delete).
     """
     try:
@@ -443,11 +489,13 @@ async def query_standards_for_agent(
     query: str = Query(..., description="Query string"),
     language: Optional[str] = Query(None, description="Programming language"),
     category: Optional[str] = Query(None, description="Category filter"),
-    limit: int = Query(10, description="Maximum results")
+    limit: int = Query(10, description="Maximum results"),
+    neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service),
+    cache_service: Optional[CacheService] = Depends(get_cache_service)
 ):
     """
     Query standards for AI agent consumption.
-    
+
     Provides a simplified interface for AI agents to query
     and retrieve relevant standards.
     """
@@ -505,17 +553,23 @@ async def query_standards_for_agent(
 async def validate_standard_background(content: str, category: str, standard_id: str):
     """Background task to validate a standard after creation."""
     try:
-        validation = await research_service.validate_standard(content, category)
-        
+        # Get services from factory for background task
+        from utils.service_factory import get_research_service, get_neo4j_service
+
+        research_svc = get_research_service()
+        neo4j_svc = get_neo4j_service()
+
+        validation = await research_svc.validate_standard(content, category)
+
         # Store validation results
-        if neo4j_service:
-            await neo4j_service.update_standard(
+        if neo4j_svc:
+            await neo4j_svc.update_standard(
                 standard_id,
                 {"validation": validation, "validated_at": datetime.now().isoformat()}
             )
-        
+
         logger.info(f"Standard {standard_id} validated with score: {validation.get('score')}")
-        
+
     except Exception as e:
         logger.error(f"Error validating standard {standard_id}: {e}")
 
