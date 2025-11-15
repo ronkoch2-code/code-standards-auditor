@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     
     # Google Gemini Configuration
     GEMINI_API_KEY: str = Field(default="", env="GEMINI_API_KEY")
-    GEMINI_MODEL: str = Field(default="gemini-1.5-pro", env="GEMINI_MODEL")
+    GEMINI_MODEL: str = Field(default="gemini-2.5-pro", env="GEMINI_MODEL")
     GEMINI_MAX_TOKENS: int = Field(default=32000, env="GEMINI_MAX_TOKENS")
     GEMINI_TEMPERATURE: float = Field(default=0.1, env="GEMINI_TEMPERATURE")
     GEMINI_TOP_P: float = Field(default=0.95, env="GEMINI_TOP_P")
@@ -106,6 +106,15 @@ class Settings(BaseSettings):
     ENABLE_REAL_TIME_UPDATES: bool = Field(default=True, env="ENABLE_REAL_TIME_UPDATES")
     ENABLE_STANDARDS_EVOLUTION: bool = Field(default=True, env="ENABLE_STANDARDS_EVOLUTION")
     ENABLE_WEBSOCKET: bool = Field(default=False, env="ENABLE_WEBSOCKET")
+
+    # Deep Research Mode Configuration
+    ENABLE_DEEP_RESEARCH: bool = Field(default=True, env="ENABLE_DEEP_RESEARCH")
+    DEEP_RESEARCH_MAX_ITERATIONS: int = Field(default=3, env="DEEP_RESEARCH_MAX_ITERATIONS")
+    DEEP_RESEARCH_QUALITY_THRESHOLD: float = Field(default=8.5, env="DEEP_RESEARCH_QUALITY_THRESHOLD")
+    DEEP_RESEARCH_TEMPERATURE_SCHEDULE: List[float] = Field(
+        default=[0.8, 0.6, 0.4],
+        env="DEEP_RESEARCH_TEMPERATURE_SCHEDULE"
+    )
     
     @validator("JWT_SECRET_KEY")
     def validate_jwt_secret(cls, v):

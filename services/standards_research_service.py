@@ -158,19 +158,25 @@ class StandardsResearchService:
         topic: str,
         category: str = "general",
         context: Optional[Dict[str, Any]] = None,
-        examples: Optional[List[str]] = None
+        examples: Optional[List[str]] = None,
+        use_deep_research: bool = True,
+        max_iterations: int = 3,
+        quality_threshold: float = 8.5
     ) -> Dict[str, Any]:
         """
-        Research and generate a new standard.
-        
+        Research and generate a new standard with optional deep research mode.
+
         Args:
             topic: The topic to research
             category: Category of research (general, language_specific, pattern, etc.)
             context: Additional context for research
             examples: Code examples to analyze
-            
+            use_deep_research: Enable iterative refinement with self-critique (default: True)
+            max_iterations: Maximum refinement iterations for deep research (default: 3)
+            quality_threshold: Quality threshold to stop refinement (0-10, default: 8.5)
+
         Returns:
-            Dictionary containing the researched standard
+            Dictionary containing the researched standard with refinement metadata
         """
         try:
             # Check cache first
@@ -185,25 +191,54 @@ class StandardsResearchService:
             if cached:
                 logger.info(f"Using cached research for {topic}")
                 return cached
-            
+
             # Prepare the prompt
             prompt = self._prepare_research_prompt(topic, category, context, examples)
-            
-            # Use Gemini to research
-            logger.info(f"Researching standard for {topic} in category {category}")
-            response = await self.gemini.generate_with_caching(
-                prompt=prompt,
-                context=f"Standards research for {topic}",
-                use_batch=False  # Research needs immediate response
+
+            # Use Gemini to research with or without deep research mode
+            logger.info(
+                f"Researching standard for {topic} in category {category} "
+                f"(deep_research={'enabled' if use_deep_research else 'disabled'})"
             )
-            
+
+            if use_deep_research:
+                # Use iterative refinement for higher quality standards
+                refinement_result = await self.gemini.generate_with_iterative_refinement(
+                    prompt=prompt,
+                    context=f"Standards research for {topic}",
+                    max_iterations=max_iterations,
+                    quality_threshold=quality_threshold
+                )
+
+                response = refinement_result["final_content"]
+                refinement_metadata = {
+                    "iterations_performed": refinement_result["iterations_performed"],
+                    "quality_scores": refinement_result["quality_scores"],
+                    "final_quality_score": refinement_result["final_quality_score"],
+                    "quality_improvement": refinement_result["improvement"],
+                    "research_mode": "deep_iterative_refinement"
+                }
+            else:
+                # Use simple generation for quick standards
+                response = await self.gemini.generate_with_caching(
+                    prompt=prompt,
+                    context=f"Standards research for {topic}",
+                    use_batch=False
+                )
+                refinement_metadata = {
+                    "research_mode": "simple_generation"
+                }
+
             # Parse and structure the response
             standard = self._parse_research_response(response, topic, category)
-            
+
+            # Add refinement metadata to standard
+            standard["metadata"]["refinement"] = refinement_metadata
+
             # Store in Neo4j
             if settings.USE_NEO4J:
                 await self._store_standard_in_graph(standard)
-            
+
             # Cache the result
             await self.cache.set_audit_result(
                 code=topic,  # Using topic as cache key content
@@ -211,12 +246,12 @@ class StandardsResearchService:
                 result=standard,
                 project_id="standards_research"
             )
-            
+
             # Save to filesystem
             await self._save_standard_to_file(standard)
-            
+
             return standard
-            
+
         except Exception as e:
             logger.error(f"Error researching standard: {e}")
             raise
@@ -510,3 +545,263 @@ class StandardsResearchService:
             "conflicts": [],
             "validation_date": datetime.now().isoformat()
         }
+
+    async def update_standard(
+        self,
+        standard_id: str,
+        updates: Optional[Dict[str, Any]] = None,
+        use_deep_research: bool = True,
+        auto_version_bump: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Update an existing standard with versioning.
+
+        This method:
+        1. Loads the existing standard
+        2. Applies updates or uses AI to refine it
+        3. Increments the version number
+        4. Preserves old version in history
+        5. Saves the new version
+
+        Args:
+            standard_id: ID of the standard to update
+            updates: Optional dictionary of updates to apply
+            use_deep_research: Use iterative refinement for updates (default: True)
+            auto_version_bump: Automatically increment version (default: True)
+
+        Returns:
+            Updated standard with new version
+        """
+        try:
+            # Load existing standard
+            existing = await self._load_standard_by_id(standard_id)
+            if not existing:
+                raise ValueError(f"Standard {standard_id} not found")
+
+            # Parse current version
+            current_version = existing.get("version", "1.0.0")
+            major, minor, patch = map(int, current_version.split("."))
+
+            # Determine update type and new version
+            if updates and "breaking_change" in updates:
+                major += 1
+                minor = 0
+                patch = 0
+            elif updates and "feature" in updates:
+                minor += 1
+                patch = 0
+            else:
+                patch += 1
+
+            new_version = f"{major}.{minor}.{patch}" if auto_version_bump else current_version
+
+            logger.info(f"Updating standard {standard_id} from v{current_version} to v{new_version}")
+
+            # Archive the old version
+            await self._archive_standard_version(existing)
+
+            # If updates provided, apply them directly
+            if updates:
+                updated_content = updates.get("content", existing["content"])
+                updated_metadata = {**existing.get("metadata", {}), **updates.get("metadata", {})}
+            else:
+                # Use AI to refine and update the standard
+                refinement_prompt = f"""
+Review and update the following coding standard to reflect current best practices as of {datetime.now().year}:
+
+CURRENT STANDARD:
+Title: {existing['title']}
+Category: {existing['category']}
+Version: {current_version}
+
+{existing['content']}
+
+Please:
+1. Update outdated information or deprecated practices
+2. Add new best practices that have emerged
+3. Improve clarity and examples
+4. Ensure consistency with modern standards
+5. Keep the core structure but enhance content
+
+Provide the updated standard in markdown format.
+"""
+
+                if use_deep_research:
+                    refinement_result = await self.gemini.generate_with_iterative_refinement(
+                        prompt=refinement_prompt,
+                        context=f"Updating standard: {existing['title']}",
+                        max_iterations=settings.DEEP_RESEARCH_MAX_ITERATIONS,
+                        quality_threshold=settings.DEEP_RESEARCH_QUALITY_THRESHOLD
+                    )
+                    updated_content = refinement_result["final_content"]
+                    updated_metadata = {
+                        **existing.get("metadata", {}),
+                        "last_updated": datetime.now().isoformat(),
+                        "refinement": refinement_result
+                    }
+                else:
+                    updated_content = await self.gemini.generate_with_caching(
+                        prompt=refinement_prompt,
+                        context=f"Updating standard: {existing['title']}"
+                    )
+                    updated_metadata = {
+                        **existing.get("metadata", {}),
+                        "last_updated": datetime.now().isoformat()
+                    }
+
+            # Create updated standard
+            updated_standard = {
+                "id": standard_id,
+                "title": existing["title"],
+                "category": existing["category"],
+                "version": new_version,
+                "created_at": existing["created_at"],
+                "updated_at": datetime.now().isoformat(),
+                "content": updated_content,
+                "status": "updated",
+                "metadata": updated_metadata,
+                "changelog": existing.get("changelog", []) + [{
+                    "version": new_version,
+                    "date": datetime.now().isoformat(),
+                    "changes": updates.get("changelog_entry", "AI-powered refinement and updates"),
+                    "previous_version": current_version
+                }]
+            }
+
+            # Save to filesystem
+            await self._save_standard_to_file(updated_standard)
+
+            # Update in Neo4j
+            if settings.USE_NEO4J:
+                await self._store_standard_in_graph(updated_standard)
+
+            logger.info(f"Standard {standard_id} updated successfully to v{new_version}")
+            return updated_standard
+
+        except Exception as e:
+            logger.error(f"Error updating standard {standard_id}: {e}")
+            raise
+
+    async def _load_standard_by_id(self, standard_id: str) -> Optional[Dict[str, Any]]:
+        """Load a standard from filesystem by ID."""
+        try:
+            # Search through standards directories
+            base_path = Path(settings.STANDARDS_BASE_PATH)
+            for category_path in base_path.iterdir():
+                if not category_path.is_dir():
+                    continue
+
+                for standard_file in category_path.glob("*.md"):
+                    # Read and parse the file
+                    content = standard_file.read_text()
+
+                    # Extract metadata from markdown frontmatter or headers
+                    # Simple parsing - would be enhanced with proper markdown parser
+                    if f"**ID:** {standard_id}" in content or standard_id in standard_file.name:
+                        return self._parse_standard_file(standard_file, content)
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error loading standard {standard_id}: {e}")
+            return None
+
+    def _parse_standard_file(self, filepath: Path, content: str) -> Dict[str, Any]:
+        """Parse a standard markdown file into structured data."""
+        lines = content.split('\n')
+
+        # Extract title (first # heading)
+        title = lines[0].replace('# ', '') if lines else filepath.stem
+
+        # Extract version, category, etc. from metadata section
+        version = "1.0.0"
+        category = filepath.parent.name
+        created_at = datetime.fromtimestamp(filepath.stat().st_ctime).isoformat()
+
+        for line in lines[:20]:  # Check first 20 lines for metadata
+            if "**Version:**" in line:
+                version = line.split("**Version:**")[1].strip()
+            elif "**Category:**" in line:
+                category = line.split("**Category:**")[1].strip()
+            elif "**Created:**" in line:
+                created_at = line.split("**Created:**")[1].strip()
+
+        return {
+            "id": hashlib.md5(f"{title}:{category}".encode()).hexdigest()[:12],
+            "title": title,
+            "category": category,
+            "version": version,
+            "created_at": created_at,
+            "content": content,
+            "filepath": str(filepath),
+            "metadata": {}
+        }
+
+    async def _archive_standard_version(self, standard: Dict[str, Any]) -> None:
+        """Archive an old version of a standard."""
+        try:
+            base_path = Path(settings.STANDARDS_BASE_PATH)
+            category_path = base_path / standard["category"]
+            archive_path = category_path / "archive"
+            archive_path.mkdir(parents=True, exist_ok=True)
+
+            # Generate archive filename with version and timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            archive_filename = (
+                f"{standard['title'].lower().replace(' ', '_')}_"
+                f"v{standard['version']}_{timestamp}.md"
+            )
+            archive_file = archive_path / archive_filename
+
+            # Save the old version
+            archive_file.write_text(standard["content"])
+
+            logger.info(f"Archived standard version to {archive_file}")
+
+        except Exception as e:
+            logger.error(f"Error archiving standard: {e}")
+
+    async def get_standard_history(
+        self,
+        standard_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get the version history of a standard.
+
+        Args:
+            standard_id: ID of the standard
+
+        Returns:
+            List of standard versions ordered by date (newest first)
+        """
+        try:
+            current = await self._load_standard_by_id(standard_id)
+            if not current:
+                return []
+
+            history = [current]
+
+            # Load archived versions
+            base_path = Path(settings.STANDARDS_BASE_PATH)
+            category_path = base_path / current["category"]
+            archive_path = category_path / "archive"
+
+            if archive_path.exists():
+                # Find all archived versions
+                pattern = f"{current['title'].lower().replace(' ', '_')}_v*.md"
+                for archive_file in archive_path.glob(pattern):
+                    content = archive_file.read_text()
+                    archived = self._parse_standard_file(archive_file, content)
+                    history.append(archived)
+
+            # Sort by version (newest first)
+            history.sort(
+                key=lambda x: tuple(map(int, x["version"].split("."))),
+                reverse=True
+            )
+
+            return history
+
+        except Exception as e:
+            logger.error(f"Error getting standard history: {e}")
+            return []
