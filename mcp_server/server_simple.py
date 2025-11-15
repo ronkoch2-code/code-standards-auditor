@@ -9,6 +9,7 @@ import json
 import logging
 import sys
 import os
+import time
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
@@ -285,7 +286,7 @@ Format as JSON."""
         try:
             # Backup existing file if it exists
             if file_path.exists():
-                backup_path = file_path.with_suffix(f".backup.{int(os.time.time())}.md")
+                backup_path = file_path.with_suffix(f".backup.{int(time.time())}.md")
                 file_path.rename(backup_path)
                 logger.info(f"Backed up existing file to {backup_path}")
             

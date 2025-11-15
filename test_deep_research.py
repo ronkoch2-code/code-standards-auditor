@@ -4,6 +4,15 @@ Test script for Deep Research Mode with Iterative Refinement
 Tests the new iterative refinement loop for standards generation
 """
 
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file BEFORE importing services
+env_file = Path(__file__).parent / '.env'
+if env_file.exists():
+    load_dotenv(env_file)
+
 import asyncio
 import sys
 from services.gemini_service import GeminiService, ModelType

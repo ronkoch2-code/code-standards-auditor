@@ -4,6 +4,16 @@ Quick test of Deep Research Mode
 Validates the implementation without full generation
 """
 
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file BEFORE importing services
+env_file = Path(__file__).parent / '.env'
+if env_file.exists():
+    load_dotenv(env_file)
+    print(f"Loaded environment from {env_file}")
+
 import asyncio
 from services.gemini_service import GeminiService, ModelType
 
