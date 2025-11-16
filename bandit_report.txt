@@ -1,0 +1,141 @@
+[main]	INFO	profile include tests: None
+[main]	INFO	profile exclude tests: None
+[main]	INFO	cli include tests: None
+[main]	INFO	cli exclude tests: None
+[main]	INFO	running on Python 3.11.9
+Working... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:03
+Run started:2025-11-16 17:28:00.009177
+
+Test results:
+>> Issue: [B324:hashlib] Use of weak MD5 hash for security. Consider usedforsecurity=False
+   Severity: High   Confidence: High
+   CWE: CWE-327 (https://cwe.mitre.org/data/definitions/327.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b324_hashlib.html
+   Location: ./api/routers/agent_optimized.py:685:25
+684	            "session_id": session_id,
+685	            "code_hash": hashlib.md5(code.encode()).hexdigest(),
+686	            "analysis_result": analysis_result.dict(),
+
+--------------------------------------------------
+>> Issue: [B104:hardcoded_bind_all_interfaces] Possible binding to all interfaces.
+   Severity: Medium   Confidence: Medium
+   CWE: CWE-605 (https://cwe.mitre.org/data/definitions/605.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b104_hardcoded_bind_all_interfaces.html
+   Location: ./api/schemas/admin.py:177:32
+176	                    "api": {
+177	                        "host": "0.0.0.0",
+178	                        "port": 8000,
+179	                        "debug": False
+180	                    },
+181	                    "cache": {
+182	                        "enabled": True,
+
+--------------------------------------------------
+>> Issue: [B104:hardcoded_bind_all_interfaces] Possible binding to all interfaces.
+   Severity: Medium   Confidence: Medium
+   CWE: CWE-605 (https://cwe.mitre.org/data/definitions/605.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b104_hardcoded_bind_all_interfaces.html
+   Location: ./config/settings.py:19:34
+18	    # API Configuration
+19	    API_HOST: str = Field(default="0.0.0.0", env="API_HOST")
+20	    API_PORT: int = Field(default=8000, env="API_PORT")
+
+--------------------------------------------------
+>> Issue: [B103:set_bad_file_permissions] Chmod setting a permissive mask 0o755 on file (script_path).
+   Severity: Medium   Confidence: High
+   CWE: CWE-732 (https://cwe.mitre.org/data/definitions/732.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b103_set_bad_file_permissions.html
+   Location: ./github-scripts/run_git_commit.py:13:4
+12	    # Make executable
+13	    os.chmod(script_path, 0o755)
+14	    print(f"✅ Made {script_path} executable")
+
+--------------------------------------------------
+>> Issue: [B324:hashlib] Use of weak MD5 hash for security. Consider usedforsecurity=False
+   Severity: High   Confidence: High
+   CWE: CWE-327 (https://cwe.mitre.org/data/definitions/327.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b324_hashlib.html
+   Location: ./services/enhanced_recommendations_service.py:417:25
+416	            "language": language,
+417	            "code_hash": hashlib.md5(code.encode()).hexdigest(),
+418	            "code_length": len(code),
+
+--------------------------------------------------
+>> Issue: [B324:hashlib] Use of weak MD5 hash for security. Consider usedforsecurity=False
+   Severity: High   Confidence: High
+   CWE: CWE-327 (https://cwe.mitre.org/data/definitions/327.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b324_hashlib.html
+   Location: ./services/recommendations_service.py:530:22
+529	        """Generate cache key for recommendations."""
+530	        key_data = f"{hashlib.md5(code.encode()).hexdigest()}:{language}"
+531	        if focus_areas:
+
+--------------------------------------------------
+>> Issue: [B324:hashlib] Use of weak MD5 hash for security. Consider usedforsecurity=False
+   Severity: High   Confidence: High
+   CWE: CWE-327 (https://cwe.mitre.org/data/definitions/327.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b324_hashlib.html
+   Location: ./services/recommendations_service.py:533:15
+532	            key_data += f":{':'.join(sorted(focus_areas))}"
+533	        return hashlib.md5(key_data.encode()).hexdigest()
+534	    
+
+--------------------------------------------------
+>> Issue: [B324:hashlib] Use of weak MD5 hash for security. Consider usedforsecurity=False
+   Severity: High   Confidence: High
+   CWE: CWE-327 (https://cwe.mitre.org/data/definitions/327.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b324_hashlib.html
+   Location: ./services/standards_research_service.py:269:15
+268	            key_data += f":{json.dumps(context, sort_keys=True)}"
+269	        return hashlib.md5(key_data.encode()).hexdigest()
+270	    
+
+--------------------------------------------------
+>> Issue: [B324:hashlib] Use of weak MD5 hash for security. Consider usedforsecurity=False
+   Severity: High   Confidence: High
+   CWE: CWE-327 (https://cwe.mitre.org/data/definitions/327.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b324_hashlib.html
+   Location: ./services/standards_research_service.py:316:18
+315	        return {
+316	            "id": hashlib.md5(f"{topic}:{datetime.now().isoformat()}".encode()).hexdigest()[:12],
+317	            "title": topic,
+
+--------------------------------------------------
+>> Issue: [B324:hashlib] Use of weak MD5 hash for security. Consider usedforsecurity=False
+   Severity: High   Confidence: High
+   CWE: CWE-327 (https://cwe.mitre.org/data/definitions/327.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b324_hashlib.html
+   Location: ./services/standards_research_service.py:730:18
+729	        return {
+730	            "id": hashlib.md5(f"{title}:{category}".encode()).hexdigest()[:12],
+731	            "title": title,
+
+--------------------------------------------------
+>> Issue: [B301:blacklist] Pickle and modules that wrap it can be unsafe when used to deserialize untrusted data, possible security issue.
+   Severity: Medium   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/blacklists/blacklist_calls.html#b301-pickle
+   Location: ./utils/cache_manager.py:118:19
+117	            # Fall back to pickle
+118	            return pickle.loads(data)
+119	    
+
+--------------------------------------------------
+
+Code scanned:
+	Total lines of code: 19955
+	Total lines skipped (#nosec): 0
+	Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 0
+
+Run metrics:
+	Total issues (by severity):
+		Undefined: 0
+		Low: 242
+		Medium: 4
+		High: 7
+	Total issues (by confidence):
+		Undefined: 0
+		Low: 0
+		Medium: 5
+		High: 248
+Files skipped (0):
