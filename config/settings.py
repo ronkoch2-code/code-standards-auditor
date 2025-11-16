@@ -115,7 +115,24 @@ class Settings(BaseSettings):
         default=[0.8, 0.6, 0.4],
         env="DEEP_RESEARCH_TEMPERATURE_SCHEDULE"
     )
+
+    # Auto-Refresh Configuration (v4.2.2)
+    ENABLE_AUTO_REFRESH_ON_ACCESS: bool = Field(default=True, env="ENABLE_AUTO_REFRESH_ON_ACCESS")
+    STANDARD_FRESHNESS_THRESHOLD_DAYS: int = Field(default=30, env="STANDARD_FRESHNESS_THRESHOLD_DAYS")
+    AUTO_REFRESH_MODE: str = Field(default="background", env="AUTO_REFRESH_MODE")  # "blocking" or "background"
+    AUTO_REFRESH_MAX_CONCURRENT: int = Field(default=3, env="AUTO_REFRESH_MAX_CONCURRENT")
+    AUTO_REFRESH_RETRY_ATTEMPTS: int = Field(default=2, env="AUTO_REFRESH_RETRY_ATTEMPTS")
+    AUTO_REFRESH_RETRY_DELAY_SECONDS: int = Field(default=60, env="AUTO_REFRESH_RETRY_DELAY_SECONDS")
+    AUTO_REFRESH_USE_DEEP_RESEARCH: bool = Field(default=True, env="AUTO_REFRESH_USE_DEEP_RESEARCH")
     
+    @validator("AUTO_REFRESH_MODE")
+    def validate_auto_refresh_mode(cls, v):
+        """Validate auto-refresh mode"""
+        allowed_modes = ["blocking", "background"]
+        if v not in allowed_modes:
+            raise ValueError(f"AUTO_REFRESH_MODE must be one of: {', '.join(allowed_modes)}")
+        return v
+
     @validator("JWT_SECRET_KEY")
     def validate_jwt_secret(cls, v):
         if not v:
