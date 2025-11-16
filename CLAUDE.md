@@ -376,3 +376,163 @@ Control features via environment variables:
 - Architecture v3: `ARCHITECTURE_V3.md`
 - Development Status: `DEVELOPMENT_STATUS.md`
 - MCP Integration: `mcp/README.md`
+
+## Starting a Session
+1. **Check current git branch**: `git branch --show-current`
+2. **Review DEVELOPMENT_STATE.md** to understand recent work and current status
+3. **Check GitHub Issues**: Run `gh issue list` (if authenticated) or check the repository to see open issues
+   - **GitHub Token**: `export GH_TOKEN=[REDACTED]`
+   - Then run: `gh issue list --limit 50`
+4. **Add open issues to todo list** with appropriate priority based on labels and description
+5. **Switch to appropriate feature branch** if needed (feature branches use `feature/` prefix)
+6. **Review any recent session logs** in `sessions/` directory (SESSION_LOG_*.md and SESSION_SUMMARY_*.md files)
+
+### During a Session
+1. **Update DEVELOPMENT_STATE.md frequently** - Log what you're about to do and update when completed
+2. **Use python3 explicitly** (not `python`) - this is a Mac development environment
+3. **Use zsh for shell commands** when needed
+4. **Store temporary GitHub scripts** in `git-hub-script/` directory
+5. **Use Code Standards Auditor** to review code and improve/create standards as needed
+6. **Learn from errors** - Update standards to prevent future occurrences of the same bugs
+7. **Manage GitHub Issues**:
+   - When completing work that resolves a GitHub issue, close it with: `gh issue close <number> -c "Resolution message"`
+   - Include details about what was done, files changed, and any relevant context
+   - Update the issue with progress comments if work is ongoing: `gh issue comment <number> -b "Progress update message"`
+   - Reference issue numbers in commit messages when relevant (e.g., "Fix #2: Add configurable LLM selection")
+
+### Ending a Session
+1. **Update README.md** with any significant changes or new features
+2. **Update DEVELOPMENT_STATE.md** with final status
+3. **Commit changes** with clear commit messages
+4. **Push to GitHub** if appropriate
+
+### Security Considerations
+- Never commit API keys - use `.env` file (gitignored)
+- Implement data masking for PII in logs
+- Use environment-based secrets in Docker
+- Validate all user inputs with Pydantic models
+
+### LLM Cost Management
+**CRITICAL**: Always optimize for cost when using Anthropic or OpenAI APIs
+- **Prompt Caching**: Enabled by default in LLMClient - use for repeated system prompts and context
+- **Batch API**: Use `BatchProcessor` for non-urgent, bulk operations (up to 50% cost savings)
+- **Budget Limits**: Set daily/monthly budgets in `.env` (LLM_DAILY_BUDGET, LLM_MONTHLY_BUDGET)
+- **Cost Tracking**: Monitor costs with `CostTracker` to avoid unexpected expenses
+- **Mock LLM**: Use `MockLLM` for development and testing to avoid API costs entirely
+
+**IMPORTANT**: Follow the Versioning Standards for all releases. See `standards/versioning_standards_v1.0.0.md`
+
+#### Version Update Decision
+
+Before committing, determine the appropriate version increment:
+
+| Change Type | Version Change | Example |
+|-------------|----------------|---------|
+| Bug fix | PATCH (x.y.Z) | 0.2.19 → 0.2.20 |
+| New feature | MINOR (x.Y.0) | 0.2.20 → 0.3.0 |
+| Breaking change | MAJOR (X.0.0) | 0.9.5 → 1.0.0 |
+
+See `standards/versioning_standards_v1.0.0.md` for detailed guidance.
+
+#### Commit and Push Process
+
+1. **Determine Version Change**
+   - Review changes: `git status` and `git diff`
+   - Decide version increment based on change type (see table above)
+   - Current version is in README.md and DEVELOPMENT_STATE.md
+
+2. **Update Documentation**
+   - **README.md**: Update version badge and add to "Recent Updates" section
+     ```markdown
+     ![Version](https://img.shields.io/badge/version-X.Y.Z-blue)
+     ![Last Updated](https://img.shields.io/badge/updated-YYYY--MM--DD-lightgrey)
+     ```
+   - **DEVELOPMENT_STATE.md**: Update version, date, and add detailed completion entry
+     ```markdown
+     **Last Updated:** YYYY-MM-DD
+     **Current Version:** vX.Y.Z
+
+     ### Recent Completions (YYYY-MM-DD - Session Name)
+
+     ✅ **[Feature/Fix Name] - COMPLETE**
+     - **Problem**: [description]
+     - **Solution**: [description with file paths and line numbers]
+     - **Testing**: [results]
+     - **Status**: ✅ RESOLVED/COMPLETE
+     ```
+
+3. **Stage Files**
+   ```bash
+   git add [modified files]
+   ```
+
+4. **Commit with Structured Message**
+   ```bash
+   git commit -m "$(cat <<'EOF'
+   [Brief title describing change] (vX.Y.Z)
+
+   ## [Bug Fix/New Feature/Breaking Change]: [Component Name]
+
+   **Problem**: [description]
+   **Solution**: [description]
+   **Testing**: [results]
+   **Files Modified**: [list]
+   **Files Created**: [list]
+
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+   Co-Authored-By: Claude <noreply@anthropic.com>
+   EOF
+   )"
+   ```
+
+5. **Create Git Tag** (REQUIRED for MINOR/MAJOR releases, optional for PATCH)
+   ```bash
+   # For new features (MINOR) or breaking changes (MAJOR)
+   git tag -a vX.Y.Z -m "Version X.Y.Z - [Brief description]
+
+   - [Key change 1]
+   - [Key change 2]
+   - [Key change 3]"
+   ```
+
+6. **Push to GitHub**
+   ```bash
+   # Set GitHub token (if not already set)
+   export GH_TOKEN=[REDACTED]
+
+   # Push commits
+   git push https://ronkoch2-code:${GH_TOKEN}@github.com/ronkoch2-code/GMOS.git main
+
+   # Push tag (if created)
+   git push https://ronkoch2-code:${GH_TOKEN}@github.com/ronkoch2-code/GMOS.git vX.Y.Z
+   ```
+
+7. **Create GitHub Release** (for MINOR/MAJOR versions)
+   ```bash
+   gh release create vX.Y.Z \
+     --title "vX.Y.Z - [Feature Name]" \
+     --notes "See DEVELOPMENT_STATE.md for detailed changes"
+   ```
+
+#### Quick Reference - Version Increments
+
+**PATCH (Bug Fixes)**: 0.2.19 → 0.2.20
+- Fixes that don't change features
+- Security patches
+- Documentation corrections
+- Performance optimizations (no behavior change)
+
+**MINOR (New Features)**: 0.2.20 → 0.3.0
+- New agents or features
+- New API endpoints (backward-compatible)
+- Significant enhancements
+- Requires git tag and reset PATCH to 0
+
+**MAJOR (Breaking Changes)**: 0.9.5 → 1.0.0
+- Removing/renaming API endpoints
+- Changing required fields
+- Removing deprecated features
+- Requires git tag, migration guide, and reset MINOR/PATCH to 0
+
+**Note**: While in version 0.x.x, breaking changes may occur in MINOR versions
