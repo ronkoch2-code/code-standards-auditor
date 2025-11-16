@@ -1,0 +1,86 @@
+# Coverage Configuration for Code Standards Auditor
+
+[run]
+source = .
+omit =
+    # Test files
+    */tests/*
+    */test_*.py
+    *_test.py
+
+    # Virtual environments
+    */venv/*
+    */env/*
+    */.venv/*
+
+    # Dependencies
+    */site-packages/*
+    */dist-packages/*
+
+    # Development scripts
+    */scripts/*
+    */github-scripts/*
+    setup_*.py
+    verify_*.py
+
+    # Temporary/archived files
+    */archived_temp_files/*
+    */archive/*
+
+    # MCP server (tested separately)
+    */mcp_server/*
+    */mcp/*
+
+    # CLI (integration tested)
+    */cli/*
+
+    # Init files (often just imports)
+    */__init__.py
+
+    # Configuration
+    */config/settings.py
+
+    # Development/debug files
+    debug_*.py
+    diagnose_*.py
+    fix_*.py
+
+branch = True
+parallel = True
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+
+exclude_lines =
+    # Standard pragmas
+    pragma: no cover
+
+    # Defensive programming
+    raise AssertionError
+    raise NotImplementedError
+
+    # Debugging code
+    if __name__ == .__main__.:
+    def __repr__
+
+    # Type checking
+    if TYPE_CHECKING:
+    if typing.TYPE_CHECKING:
+
+    # Abstract methods
+    @abstractmethod
+    @abc.abstractmethod
+
+    # Pass statements
+    pass
+
+    # Ellipsis
+    \.\.\.
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml
