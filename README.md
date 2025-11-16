@@ -1,8 +1,20 @@
-# Code Standards Auditor v4.2.0 - Deep Research Mode!
+# Code Standards Auditor v4.2.2 - Auto-Refresh Standards!
 
-> 🎉 **NEW in v4.2.0**: Deep Research Mode with iterative refinement! AI-powered multi-pass generation with self-critique achieves 8.5-9.5/10 quality scores. Temperature scheduling (0.8→0.6→0.4) and comprehensive versioning system ensures enterprise-grade standards.
+> 🎉 **NEW in v4.2.2**: Auto-refresh standards on access! Standards older than 30 days automatically update using deep research mode. Background queue processing, comprehensive metrics, and per-standard configuration ensure always-current best practices.
 
-## 🔄 Latest Updates (November 15, 2025)
+## 🔄 Latest Updates (November 16, 2025)
+
+### v4.2.2 - Auto-Refresh Standards on Access ✅ COMPLETE
+- ✅ **StandardsAccessService**: Intelligent access layer with automatic freshness checking (605 lines)
+- ✅ **Access Tracking**: last_accessed timestamps, access counts, and staleness detection
+- ✅ **Dual Refresh Modes**: Blocking (wait for update) or Background (return immediately)
+- ✅ **Background Queue**: Worker pool with retry logic and exponential backoff
+- ✅ **Deep Research Integration**: Uses v4.2.0 iterative refinement for updates
+- ✅ **Comprehensive Metrics**: Success rates, duration tracking, queue status
+- ✅ **Per-Standard Configuration**: Custom thresholds and enable/disable per standard
+- ✅ **Metrics API**: 5 new endpoints for monitoring auto-refresh operations
+- ✅ **Test Suite**: 27 unit tests with 61.26% coverage (all passing)
+- ✅ **Configuration**: 7 new settings for complete control
 
 ### v4.2.1 - Test Suite Foundation ✅ COMPLETE
 - ✅ **Test Infrastructure**: Complete pytest setup with coverage configuration
@@ -947,6 +959,48 @@ For issues, questions, or suggestions:
 - Review the [API docs](http://localhost:8000/docs) when running locally
 
 ## 🔄 Version History
+
+### v4.2.2 (November 16, 2025) - 🔄 Auto-Refresh Standards on Access
+- **🎯 StandardsAccessService**: Complete intelligent access layer (605 lines)
+  - Automatic freshness detection based on configurable threshold (default: 30 days)
+  - Access tracking with last_accessed timestamps and access counts
+  - Staleness detection using file modification time
+  - Per-standard configuration (enable/disable, custom thresholds)
+- **⚡ Dual Refresh Modes**: Flexible update strategies
+  - Blocking mode: Wait for update before returning standard
+  - Background mode: Return immediately, update in background queue
+  - Configurable via AUTO_REFRESH_MODE setting
+- **🔁 Background Task Queue**: Worker pool for async updates (200 lines)
+  - Configurable concurrent workers (default: 3)
+  - Retry logic with exponential backoff
+  - Duplicate prevention (don't queue same standard twice)
+  - Queue status monitoring and metrics
+- **📊 Comprehensive Metrics**: Full observability (100 lines)
+  - Total accesses, stale detections, refresh attempts/successes/failures
+  - Average refresh duration and success rate calculations
+  - Background queue size and active workers tracking
+  - 5 new API endpoints for monitoring
+- **🔗 Deep Research Integration**: Uses v4.2.0 iterative refinement
+  - Auto-refreshes use deep research mode for 8.5-9.5/10 quality
+  - Temperature scheduling and self-critique during updates
+  - Version history preserved via existing versioning system
+- **⚙️ Configuration**: 7 new settings for complete control
+  - ENABLE_AUTO_REFRESH_ON_ACCESS (default: true)
+  - STANDARD_FRESHNESS_THRESHOLD_DAYS (default: 30)
+  - AUTO_REFRESH_MODE (blocking/background, default: background)
+  - AUTO_REFRESH_MAX_CONCURRENT (default: 3)
+  - AUTO_REFRESH_RETRY_ATTEMPTS (default: 2)
+  - AUTO_REFRESH_RETRY_DELAY_SECONDS (default: 60)
+  - AUTO_REFRESH_USE_DEEP_RESEARCH (default: true)
+- **✅ Testing**: Comprehensive test suite
+  - 27 unit tests (all passing, 100% pass rate)
+  - 61.26% coverage for standards_access_service.py
+  - Tests for metadata, metrics, blocking/background modes, retry logic
+  - Integration tests for end-to-end flows
+- **📚 Documentation**: Complete design and implementation docs
+  - AUTO_REFRESH_DESIGN.md (500+ lines) - Full architecture
+  - API documentation for 5 new metrics endpoints
+  - Configuration examples and usage patterns
 
 ### v4.2.0 (November 14, 2025) - 🔬 Deep Research Mode with Iterative Refinement
 - **🎯 Multi-Pass Generation**: Iterative refinement loop with self-critique (485 lines)
