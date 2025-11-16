@@ -216,8 +216,9 @@ class DetailedLoggingMiddleware(BaseHTTPMiddleware):
             body_str = body.decode("utf-8")[:self.max_body_length]
             if len(body) > self.max_body_length:
                 body_str += "... (truncated)"
-        except Exception:
-            body_str = "<unable to read body>"
+        except (UnicodeDecodeError, RuntimeError, ValueError) as e:
+            # Body may be binary, consumed, or malformed
+            body_str = f"<unable to read body: {type(e).__name__}>"
 
         logger.debug(
             "Request details",

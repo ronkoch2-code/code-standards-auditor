@@ -653,11 +653,15 @@ class EnhancedCLI:
                     line = sys.stdin.readline().strip()
                     if line.lower() == 'q':
                         return True
-                        
-        except Exception:
+
+        except (OSError, IOError, EOFError, RuntimeError) as e:
             # If input checking fails, continue monitoring
+            # Catches: select failures, stdin unavailable, EOF, other IO errors
+            import structlog
+            logger = structlog.get_logger()
+            logger.debug("Input check failed during monitoring", error=str(e))
             pass
-        
+
         return False
     
     async def _handle_workflow_completion(self, workflow_id: str) -> bool:

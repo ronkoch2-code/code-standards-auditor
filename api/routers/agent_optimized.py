@@ -175,7 +175,7 @@ async def analyze_code_for_agent(
     neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service),
     cache_service: Optional[CacheService] = Depends(get_cache_service),
     x_agent_version: Optional[str] = Header(None)
-):
+) -> CodeAnalysisResult:
     """
     Analyze code against applicable standards with agent-optimized output.
 
@@ -234,7 +234,7 @@ async def search_standards_for_agent(
     request: StandardsSearchRequest,
     neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service),
     x_agent_id: Optional[str] = Header(None)
-):
+) -> StandardSearchResult:
     """
     Enhanced standards search optimized for agent consumption.
 
@@ -279,7 +279,7 @@ async def search_standards_for_agent(
 @router.post("/batch-standards", response_model=List[Dict[str, Any]])
 async def get_batch_standards_for_agent(
     request: BatchStandardsRequest
-):
+) -> List[Dict[str, Any]]:
     """
     Retrieve multiple standards in batch for efficient agent processing.
     
@@ -311,7 +311,7 @@ async def get_batch_standards_for_agent(
 @router.post("/suggest-standards")
 async def suggest_standards_for_context(
     request: StandardSuggestionRequest
-):
+) -> Dict[str, Any]:
     """
     Suggest relevant standards based on agent context and code samples.
     
@@ -350,7 +350,7 @@ async def stream_standards_updates(
     context_type: AgentContextType,
     session_id: Optional[str] = Query(None),
     languages: Optional[str] = Query(None)
-):
+) -> StreamingResponse:
     """
     Stream real-time updates about relevant standards for active sessions.
     
@@ -391,7 +391,7 @@ async def validate_code_implementation(
     standard_ids: List[str] = Body(..., description="Standards to validate against"),
     context: AgentContext = Body(..., description="Agent context"),
     strict_mode: bool = Body(default=False, description="Enable strict validation")
-):
+) -> Dict[str, Any]:
     """
     Validate code implementation against specific standards.
     
@@ -423,7 +423,7 @@ async def get_context_aware_standards(
     project_type: Optional[str] = Query(None),
     team_size: Optional[str] = Query(None),
     experience_level: Optional[str] = Query(None)
-):
+) -> Dict[str, Any]:
     """
     Get standards tailored to specific context and constraints.
     
@@ -704,7 +704,7 @@ async def learn_from_analysis(
 async def agent_health_check(
     neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service),
     cache_service: Optional[CacheService] = Depends(get_cache_service)
-):
+) -> Dict[str, Any]:
     """Health check for agent-optimized endpoints."""
     return {
         "status": "healthy",

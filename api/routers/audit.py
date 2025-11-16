@@ -58,8 +58,8 @@ async def audit_code(
     gemini: GeminiService = Depends(get_gemini_service),
     neo4j: Neo4jService = Depends(get_neo4j_service),
     cache: CacheService = Depends(get_cache_service),
-    request: Request = None
-):
+    request: Optional[Request] = None
+) -> AuditResponse:
     """
     Perform code audit against standards
     
@@ -230,8 +230,8 @@ async def batch_audit(
     gemini: GeminiService = Depends(get_gemini_service),
     neo4j: Neo4jService = Depends(get_neo4j_service),
     cache: CacheService = Depends(get_cache_service),
-    request: Request = None
-):
+    request: Optional[Request] = None
+) -> BatchAuditResponse:
     """
     Perform batch code audit
     
@@ -330,7 +330,7 @@ async def get_audit_history(
     file_path: Optional[str] = None,
     min_score: Optional[float] = None,
     neo4j: Neo4jService = Depends(get_neo4j_service)
-):
+) -> PaginatedResponse[AuditHistory]:
     """
     Get audit history
     
@@ -364,7 +364,7 @@ async def get_audit_details(
     audit_id: str,
     cache: CacheService = Depends(get_cache_service),
     neo4j: Neo4jService = Depends(get_neo4j_service)
-):
+) -> AuditResult:
     """
     Get detailed audit result
     
@@ -388,8 +388,8 @@ async def rerun_audit(
     gemini: GeminiService = Depends(get_gemini_service),
     neo4j: Neo4jService = Depends(get_neo4j_service),
     cache: CacheService = Depends(get_cache_service),
-    request: Request = None
-):
+    request: Optional[Request] = None
+) -> AuditResponse:
     """
     Rerun a previous audit
     
@@ -406,7 +406,7 @@ async def rerun_audit(
 async def stream_audit_progress(
     audit_id: str,
     cache: CacheService = Depends(get_cache_service)
-):
+) -> StreamingResponse:
     """
     Stream audit progress via SSE
     
@@ -428,7 +428,7 @@ async def stream_audit_progress(
     )
 
 
-async def send_webhook(url: str, batch_id: str, results: List[Dict]):
+async def send_webhook(url: str, batch_id: str, results: List[Dict]) -> None:
     """Send webhook notification for batch completion"""
     # In production, implement webhook sending
     logger.info("Sending webhook", url=url, batch_id=batch_id)

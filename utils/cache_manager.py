@@ -92,7 +92,11 @@ class CacheManager:
                 await self.redis_client.ping()
                 return True
             return False
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError) as e:
+            # Redis connection/network issues
+            import structlog
+            logger = structlog.get_logger()
+            logger.debug("Redis health check failed", error=str(e))
             return False
     
     def _serialize(self, value: Any) -> bytes:

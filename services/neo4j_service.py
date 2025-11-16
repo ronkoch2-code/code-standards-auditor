@@ -127,11 +127,13 @@ class Neo4jService:
         """
         if not self.driver:
             return False
-        
+
         try:
             await self.driver.verify_connectivity()
             return True
-        except Exception:
+        except (ServiceUnavailable, SessionExpired, OSError, ConnectionError) as e:
+            # Neo4j connection/network issues
+            logger.debug("Neo4j health check failed", error=str(e))
             return False
     
     async def _create_indexes(self):
