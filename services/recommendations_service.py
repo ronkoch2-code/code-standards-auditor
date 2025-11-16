@@ -527,10 +527,10 @@ class RecommendationsService:
         focus_areas: Optional[List[str]] = None
     ) -> str:
         """Generate cache key for recommendations."""
-        key_data = f"{hashlib.md5(code.encode()).hexdigest()}:{language}"
+        key_data = f"{hashlib.md5(code.encode(), usedforsecurity=False).hexdigest()}:{language}"
         if focus_areas:
             key_data += f":{':'.join(sorted(focus_areas))}"
-        return hashlib.md5(key_data.encode()).hexdigest()
+        return hashlib.md5(key_data.encode(), usedforsecurity=False).hexdigest()
     
     async def get_quick_fixes(
         self,

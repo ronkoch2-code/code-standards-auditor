@@ -266,7 +266,7 @@ class StandardsResearchService:
         key_data = f"{topic}:{category}"
         if context:
             key_data += f":{json.dumps(context, sort_keys=True)}"
-        return hashlib.md5(key_data.encode()).hexdigest()
+        return hashlib.md5(key_data.encode(), usedforsecurity=False).hexdigest()
     
     def _prepare_research_prompt(
         self,
@@ -313,7 +313,7 @@ class StandardsResearchService:
     ) -> Dict[str, Any]:
         """Parse the LLM response into a structured standard."""
         return {
-            "id": hashlib.md5(f"{topic}:{datetime.now().isoformat()}".encode()).hexdigest()[:12],
+            "id": hashlib.md5(f"{topic}:{datetime.now().isoformat()}".encode(), usedforsecurity=False).hexdigest()[:12],
             "title": topic,
             "category": category,
             "version": "1.0.0",
@@ -727,7 +727,7 @@ Provide the updated standard in markdown format.
                 created_at = line.split("**Created:**")[1].strip()
 
         return {
-            "id": hashlib.md5(f"{title}:{category}".encode()).hexdigest()[:12],
+            "id": hashlib.md5(f"{title}:{category}".encode(), usedforsecurity=False).hexdigest()[:12],
             "title": title,
             "category": category,
             "version": version,

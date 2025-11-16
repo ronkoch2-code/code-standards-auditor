@@ -414,7 +414,7 @@ class EnhancedRecommendationsService:
         analysis_context = {
             "code": code,
             "language": language,
-            "code_hash": hashlib.md5(code.encode()).hexdigest(),
+            "code_hash": hashlib.md5(code.encode(), usedforsecurity=False).hexdigest(),
             "code_length": len(code),
             "line_count": len(code.splitlines()),
             "focus_areas": focus_areas or [],

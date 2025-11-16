@@ -682,7 +682,7 @@ async def learn_from_analysis(
         # Store learning data
         learning_data = {
             "session_id": session_id,
-            "code_hash": hashlib.md5(code.encode()).hexdigest(),
+            "code_hash": hashlib.md5(code.encode(), usedforsecurity=False).hexdigest(),
             "analysis_result": analysis_result.dict(),
             "timestamp": datetime.now().isoformat()
         }
