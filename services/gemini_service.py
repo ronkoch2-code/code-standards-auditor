@@ -29,10 +29,11 @@ genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 class ModelType(Enum):
     """Available Gemini models"""
-    GEMINI_PRO = "gemini-1.5-pro"
-    GEMINI_FLASH = "gemini-1.5-flash"
-    GEMINI_PRO_002 = "gemini-1.5-pro-002"
-    GEMINI_FLASH_002 = "gemini-1.5-flash-002"
+    GEMINI_PRO = "gemini-2.5-pro"
+    GEMINI_FLASH = "gemini-2.5-flash"
+    GEMINI_PRO_002 = "gemini-2.5-pro-preview-05-06"
+    GEMINI_FLASH_002 = "gemini-2.5-flash-preview-05-20"
+    GEMINI_2_FLASH_THINKING = "gemini-2.0-flash-thinking-exp"  # Extended reasoning mode
 
 
 @dataclass
@@ -482,6 +483,321 @@ Provide a comprehensive audit report in JSON format with the structure:
             use_caching=True
         )
     
+    async def generate_with_iterative_refinement(
+        self,
+        prompt: str,
+        context: Optional[str] = None,
+        max_iterations: int = 3,
+        quality_threshold: float = 8.5,
+        temperature_schedule: Optional[List[float]] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate content with iterative refinement and self-critique.
+
+        This implements a multi-pass approach:
+        1. Initial generation (higher temperature for creativity)
+        2. Self-critique to identify gaps and weaknesses
+        3. Refinement based on critique
+        4. Repeat until quality threshold met or max iterations reached
+
+        Args:
+            prompt: The initial prompt
+            context: Optional context for the generation
+            max_iterations: Maximum refinement iterations (default: 3)
+            quality_threshold: Quality score to stop refinement (0-10 scale, default: 8.5)
+            temperature_schedule: Custom temperature for each iteration
+
+        Returns:
+            Dictionary containing:
+            - final_content: The refined content
+            - iterations: Number of iterations performed
+            - quality_scores: Quality score from each iteration
+            - critique_history: All critiques generated
+        """
+        if temperature_schedule is None:
+            # Default schedule: start creative, end precise
+            temperature_schedule = [0.8, 0.6, 0.4][:max_iterations]
+
+        iteration_results = []
+        current_content = None
+
+        logger.info(f"Starting iterative refinement (max {max_iterations} iterations)")
+
+        for iteration in range(max_iterations):
+            temp = temperature_schedule[iteration] if iteration < len(temperature_schedule) else 0.4
+
+            # Step 1: Generate or refine content
+            if iteration == 0:
+                # Initial generation
+                generation_prompt = prompt
+                if context:
+                    generation_prompt = f"Context: {context}\n\n{prompt}"
+
+                logger.info(f"Iteration {iteration + 1}: Initial generation (temp={temp})")
+            else:
+                # Refinement based on previous critique
+                previous_critique = iteration_results[-1]["critique"]
+                generation_prompt = f"""
+Based on the following critique, refine and improve the content:
+
+CRITIQUE:
+{previous_critique}
+
+CURRENT CONTENT:
+{current_content}
+
+ORIGINAL REQUEST:
+{prompt}
+
+Please provide an improved version that addresses all the points raised in the critique.
+Make substantial improvements while maintaining the core structure and intent.
+"""
+                logger.info(f"Iteration {iteration + 1}: Refinement based on critique (temp={temp})")
+
+            # Generate content with appropriate temperature
+            current_content = await self._generate_with_temperature(
+                generation_prompt,
+                temperature=temp
+            )
+
+            # Step 2: Self-critique the generated content
+            critique_result = await self._critique_content(
+                content=current_content,
+                original_prompt=prompt,
+                iteration=iteration + 1
+            )
+
+            # Store iteration results
+            iteration_results.append({
+                "iteration": iteration + 1,
+                "content": current_content,
+                "critique": critique_result["critique"],
+                "quality_score": critique_result["quality_score"],
+                "strengths": critique_result["strengths"],
+                "weaknesses": critique_result["weaknesses"],
+                "temperature": temp
+            })
+
+            logger.info(
+                f"Iteration {iteration + 1} complete: "
+                f"Quality Score = {critique_result['quality_score']}/10"
+            )
+
+            # Step 3: Check if quality threshold met
+            if critique_result["quality_score"] >= quality_threshold:
+                logger.info(
+                    f"Quality threshold met ({critique_result['quality_score']} >= {quality_threshold}). "
+                    f"Stopping after {iteration + 1} iterations."
+                )
+                break
+
+        # Compile final results
+        final_result = {
+            "final_content": current_content,
+            "iterations_performed": len(iteration_results),
+            "quality_scores": [r["quality_score"] for r in iteration_results],
+            "iteration_history": iteration_results,
+            "final_quality_score": iteration_results[-1]["quality_score"],
+            "improvement": iteration_results[-1]["quality_score"] - iteration_results[0]["quality_score"]
+        }
+
+        logger.info(
+            f"Refinement complete: {len(iteration_results)} iterations, "
+            f"Quality improved from {iteration_results[0]['quality_score']} to "
+            f"{iteration_results[-1]['quality_score']} (+{final_result['improvement']:.1f})"
+        )
+
+        return final_result
+
+    async def _generate_with_temperature(
+        self,
+        prompt: str,
+        temperature: float = 0.7
+    ) -> str:
+        """
+        Generate content with a specific temperature setting.
+
+        Args:
+            prompt: The prompt to generate from
+            temperature: Temperature setting (0.0-1.0)
+
+        Returns:
+            Generated content as string
+        """
+        try:
+            # Create a temporary model with the specified temperature
+            temp_model = genai.GenerativeModel(
+                model_name=self.model_type.value,
+                safety_settings={
+                    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                },
+                generation_config={
+                    "temperature": temperature,
+                    "top_p": 0.95,
+                    "top_k": 40,
+                    "max_output_tokens": self.model._generation_config.get("max_output_tokens", 8192) if hasattr(self.model, "_generation_config") else 8192
+                }
+            )
+
+            response = await temp_model.generate_content_async(prompt)
+            return response.text
+
+        except Exception as e:
+            logger.error(f"Content generation with temperature {temperature} failed: {e}")
+            raise
+
+    async def _critique_content(
+        self,
+        content: str,
+        original_prompt: str,
+        iteration: int
+    ) -> Dict[str, Any]:
+        """
+        Generate a detailed critique of the content.
+
+        This uses a separate model call to act as a critic, evaluating:
+        - Completeness relative to the original prompt
+        - Quality and depth of information
+        - Structure and organization
+        - Clarity and readability
+        - Technical accuracy
+        - Practical applicability
+
+        Args:
+            content: The content to critique
+            original_prompt: The original prompt/request
+            iteration: Current iteration number
+
+        Returns:
+            Dictionary with critique, quality score, strengths, and weaknesses
+        """
+        critique_prompt = f"""
+You are an expert technical reviewer and standards quality auditor.
+Your role is to provide a thorough, constructive critique of the following content.
+
+ORIGINAL REQUEST:
+{original_prompt}
+
+GENERATED CONTENT (Iteration {iteration}):
+{content}
+
+Please evaluate this content on the following criteria (score each 0-10):
+
+1. **Completeness**: Does it fully address all aspects of the original request?
+2. **Depth**: Is the information detailed and comprehensive enough?
+3. **Structure**: Is it well-organized and easy to navigate?
+4. **Clarity**: Is the writing clear, concise, and understandable?
+5. **Technical Accuracy**: Is the technical information correct and up-to-date?
+6. **Practical Applicability**: Can this be practically implemented/used?
+7. **Examples**: Are there sufficient, high-quality examples?
+8. **Best Practices**: Does it reflect current industry best practices?
+
+Provide your response in the following JSON format:
+{{
+    "overall_quality_score": <0-10>,
+    "criteria_scores": {{
+        "completeness": <0-10>,
+        "depth": <0-10>,
+        "structure": <0-10>,
+        "clarity": <0-10>,
+        "technical_accuracy": <0-10>,
+        "practical_applicability": <0-10>,
+        "examples": <0-10>,
+        "best_practices": <0-10>
+    }},
+    "strengths": [
+        "Strength 1",
+        "Strength 2",
+        "Strength 3"
+    ],
+    "weaknesses": [
+        "Weakness 1",
+        "Weakness 2",
+        "Weakness 3"
+    ],
+    "specific_improvements": [
+        "Specific improvement 1 with exact location/section",
+        "Specific improvement 2 with exact location/section",
+        "Specific improvement 3 with exact location/section"
+    ],
+    "missing_sections": [
+        "Missing section 1",
+        "Missing section 2"
+    ],
+    "critique_summary": "Overall assessment and key recommendations in 2-3 sentences"
+}}
+
+Be thorough and constructive. Identify both what works well and what needs improvement.
+"""
+
+        try:
+            # Use lower temperature for consistent critique
+            critique_response = await self._generate_with_temperature(
+                critique_prompt,
+                temperature=0.3
+            )
+
+            # Parse JSON response
+            json_start = critique_response.find('{')
+            json_end = critique_response.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                critique_json = json.loads(critique_response[json_start:json_end])
+            else:
+                raise ValueError("No valid JSON found in critique response")
+
+            # Build comprehensive critique text
+            critique_text = f"""
+ITERATION {iteration} CRITIQUE
+
+Overall Quality Score: {critique_json['overall_quality_score']}/10
+
+CRITERIA SCORES:
+{json.dumps(critique_json['criteria_scores'], indent=2)}
+
+STRENGTHS:
+{chr(10).join(f"✓ {s}" for s in critique_json['strengths'])}
+
+WEAKNESSES:
+{chr(10).join(f"✗ {w}" for w in critique_json['weaknesses'])}
+
+SPECIFIC IMPROVEMENTS NEEDED:
+{chr(10).join(f"→ {i}" for i in critique_json['specific_improvements'])}
+
+MISSING SECTIONS:
+{chr(10).join(f"• {m}" for m in critique_json.get('missing_sections', []))}
+
+SUMMARY:
+{critique_json['critique_summary']}
+"""
+
+            return {
+                "critique": critique_text,
+                "quality_score": critique_json['overall_quality_score'],
+                "criteria_scores": critique_json['criteria_scores'],
+                "strengths": critique_json['strengths'],
+                "weaknesses": critique_json['weaknesses'],
+                "specific_improvements": critique_json['specific_improvements'],
+                "missing_sections": critique_json.get('missing_sections', []),
+                "summary": critique_json['critique_summary']
+            }
+
+        except Exception as e:
+            logger.error(f"Content critique failed: {e}")
+            # Return a default critique if parsing fails
+            return {
+                "critique": f"Critique generation failed: {e}",
+                "quality_score": 5.0,
+                "criteria_scores": {},
+                "strengths": [],
+                "weaknesses": ["Critique could not be generated"],
+                "specific_improvements": [],
+                "missing_sections": [],
+                "summary": "Unable to generate critique due to parsing error"
+            }
+
     async def get_usage_stats(self) -> Dict[str, Any]:
         """Get usage statistics for monitoring and optimization"""
         stats = {
@@ -490,13 +806,13 @@ Provide a comprehensive audit report in JSON format with the structure:
             "cached_contexts": len(self.cached_contexts),
             "batch_queue_size": len(self.batch_queue)
         }
-        
+
         if self.cache_manager:
             cache_stats = await self.cache_manager.get_stats()
             stats.update(cache_stats)
-        
+
         return stats
-    
+
     async def clear_cache(self):
         """Clear all caches"""
         self.cached_contexts.clear()

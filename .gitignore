@@ -228,3 +228,9 @@ docs/.doctrees/
 # Lock files (except requirements)
 !requirements.txt
 !requirements-dev.txt
+
+# Temporary cleanup files
+archived_temp_files/
+cleanup_temp_files.sh
+run_cleanup.py
+
