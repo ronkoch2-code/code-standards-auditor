@@ -381,7 +381,8 @@ Control features via environment variables:
 1. **Check current git branch**: `git branch --show-current`
 2. **Review DEVELOPMENT_STATE.md** to understand recent work and current status
 3. **Check GitHub Issues**: Run `gh issue list` (if authenticated) or check the repository to see open issues
-   - **GitHub Token**: `# GitHub auth configured via gh CLI`
+   - Ensure GitHub CLI is authenticated with `gh auth status`
+   - If not authenticated, run `gh auth login`
    - Then run: `gh issue list --limit 50`
 4. **Add open issues to todo list** with appropriate priority based on labels and description
 5. **Switch to appropriate feature branch** if needed (feature branches use `feature/` prefix)
@@ -498,14 +499,14 @@ See `standards/versioning_standards_v1.0.0.md` for detailed guidance.
 
 6. **Push to GitHub**
    ```bash
-   # Set GitHub token (if not already set)
-   # GitHub auth configured via gh CLI
+   # Ensure GitHub CLI is authenticated
+   gh auth status
 
    # Push commits
-   git push https://ronkoch2-code:${GH_TOKEN}@github.com/ronkoch2-code/GMOS.git main
+   git push
 
    # Push tag (if created)
-   git push https://ronkoch2-code:${GH_TOKEN}@github.com/ronkoch2-code/GMOS.git vX.Y.Z
+   git push origin vX.Y.Z
    ```
 
 7. **Create GitHub Release** (for MINOR/MAJOR versions)
