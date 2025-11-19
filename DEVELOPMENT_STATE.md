@@ -1,9 +1,79 @@
 # Development State - Code Standards Auditor
 
-**Last Updated:** November 16, 2025
-**Current Version:** v4.2.2 (Released)
+**Last Updated:** November 18, 2025
+**Current Version:** v4.3.0 (Released)
 
 ## Recent Completions
+
+### ✅ **Enhanced MCP Server with Research Tool - COMPLETE (November 18, 2025)**
+
+**Status**: ✅ COMPLETE
+
+**Problem**: MCP server lacked ability to research and generate new standards directly in Claude Desktop
+- Users had to switch between tools to create new standards
+- Environment variable loading was inconsistent
+- Standards discovery didn't support subdirectory organization
+- API key configuration issues with .env file precedence
+
+**Solution**: Comprehensive MCP server enhancements with research tool and improved infrastructure
+
+**Implementation Details**:
+
+1. **Research Standard Tool** (`mcp_server/server_simple.py:136-161`)
+   - New `research_standard` MCP tool for AI-powered standard generation
+   - Parameters: topic (required), language (optional, default: "general"), category (optional, default: "best-practices")
+   - Returns: Generated standard with metadata, filename, and save path
+   - Auto-saves to appropriate directory with semantic versioning
+
+2. **Research Standard Implementation** (`mcp_server/server_simple.py:324-417`)
+   - `_research_standard()` async method with comprehensive prompt engineering
+   - Uses Gemini 2.0 Flash model (gemini-2.0-flash-exp)
+   - Generates 8-section standards: Overview, Rationale, Rules, Best Practices, Pitfalls, Examples, Tools, References
+   - Automatic filename generation from topic with version (v1.0.0)
+   - Integrates with existing `_save_standard()` method
+   - Detailed error handling and logging
+
+3. **Environment Variable Loading** (`mcp_server/server_simple.py:29-41`)
+   - Added `override=True` to `load_dotenv()` for consistent .env precedence
+   - API key verification logging with masked display (first 10 + last 4 chars)
+   - Clear warning when GEMINI_API_KEY not found
+   - Better debugging for environment issues
+
+4. **Runtime API Key Reconfiguration** (`mcp_server/server_simple.py:281-286, 337-344`)
+   - Both `_analyze_code()` and `_research_standard()` reconfigure API key at runtime
+   - Ensures fresh key from environment on each tool invocation
+   - Detailed logging for troubleshooting
+   - Proper error messages when key is missing
+
+5. **Recursive Standards Discovery** (`mcp_server/server_simple.py:240-268`)
+   - Changed from `glob("*.md")` to `rglob("*.md")` for recursive search
+   - Keys include relative path from language directory (e.g., "security/api_key_security")
+   - Supports subdirectory organization (security/, performance/, testing/, etc.)
+   - Added explanatory note in response about organization structure
+
+6. **Bug Fixes**:
+   - Fixed project root path: `Path(__file__).parent.parent` (removed extra `.parent`)
+   - Moved Gemini API configuration after .env loading to ensure key is available
+   - Set `GEMINI_AVAILABLE = False` when API key is missing
+   - Better exception handling throughout
+
+**Files Modified**:
+- `mcp_server/server_simple.py` (+156 lines, enhanced 3 methods, added 1 method, fixed 3 bugs)
+
+**Testing**: Manual validation in Claude Desktop
+- research_standard tool successfully generates comprehensive standards
+- get_standards correctly discovers subdirectory organization
+- analyze_code works with runtime API key configuration
+- Environment variable loading verified with logging
+
+**Impact**:
+- Users can now research and generate standards directly in Claude Desktop
+- Better organization with subdirectory support
+- More reliable environment variable handling
+- Improved debugging with masked API key logging
+- Seamless integration with existing MCP workflow
+
+---
 
 ### ✅ **Code Quality Quick Wins - Exception Handlers & Type Hints - COMPLETE (November 16, 2025)**
 

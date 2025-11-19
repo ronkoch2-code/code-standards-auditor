@@ -1,8 +1,30 @@
-# Code Standards Auditor v4.2.2 - Auto-Refresh Standards!
+# Code Standards Auditor v4.3.0 - Enhanced MCP Server!
 
-> 🎉 **NEW in v4.2.2**: Auto-refresh standards on access! Standards older than 30 days automatically update using deep research mode. Background queue processing, comprehensive metrics, and per-standard configuration ensure always-current best practices.
+> 🎉 **NEW in v4.3.0**: Enhanced MCP server with AI-powered standard research! Generate new standards directly in Claude Desktop, recursive standards discovery, and improved environment variable handling for seamless integration.
 
-## 🔄 Latest Updates (November 16, 2025)
+## 🔄 Latest Updates (November 18, 2025)
+
+### v4.3.0 - Enhanced MCP Server with Research Tool ✅ COMPLETE
+- ✅ **Research Standard Tool**: Generate new coding standards directly in Claude Desktop
+  - `research_standard` MCP tool with topic, language, and category parameters
+  - AI-powered comprehensive standard generation using Gemini 2.0 Flash
+  - Automatic saving with semantic versioning (v1.0.0)
+  - Full markdown documentation with examples, best practices, and references
+- ✅ **Improved Environment Loading**: Better .env file handling
+  - `override=True` flag ensures .env values take precedence
+  - API key verification logging with masked display
+  - Runtime reconfiguration for both analyze_code and research_standard tools
+  - Clear error messages when GEMINI_API_KEY is missing
+- ✅ **Recursive Standards Discovery**: Enhanced standards organization
+  - Subdirectory support for better categorization (e.g., security/, performance/)
+  - Relative path keys for context (e.g., "security/api_key_security")
+  - Note field in response explaining organization structure
+- ✅ **Bug Fixes**:
+  - Fixed project root path calculation (removed extra .parent)
+  - API key configuration moved after .env loading
+  - GEMINI_AVAILABLE flag properly set when API key is missing
+
+## 🔄 Recent Updates (November 16, 2025)
 
 ### Code Quality Improvements ✅ COMPLETE
 - ✅ **Exception Handling**: Replaced 4 generic handlers with specific exception types
@@ -972,6 +994,30 @@ For issues, questions, or suggestions:
 
 ## 🔄 Version History
 
+### v4.3.0 (November 18, 2025) - 🚀 Enhanced MCP Server with Research Tool
+- **🔬 Research Standard Tool**: AI-powered standard generation in Claude Desktop
+  - New `research_standard` MCP tool for creating comprehensive coding standards
+  - Supports topic, language (optional), and category parameters
+  - Uses Gemini 2.0 Flash for intelligent standard generation
+  - Automatic saving with semantic versioning (v1.0.0)
+  - Generates complete standards with overview, rules, examples, and references
+- **🔧 Environment Variable Improvements**: Better .env handling
+  - Added `override=True` to load_dotenv for consistent behavior
+  - API key verification logging with masked display (shows first 10 and last 4 chars)
+  - Runtime reconfiguration of Gemini API key before each tool use
+  - Clear error messages when GEMINI_API_KEY is not set
+- **📂 Recursive Standards Discovery**: Enhanced organization support
+  - `get_standards` now recursively searches subdirectories
+  - Keys include relative paths for context (e.g., "security/api_key_security")
+  - Better organization with category subdirectories
+  - Note field explains subdirectory structure
+- **🐛 Bug Fixes**:
+  - Fixed project root path calculation (removed extra .parent)
+  - Moved Gemini API configuration after .env loading
+  - GEMINI_AVAILABLE flag properly set when API key missing
+  - Better error handling for missing API keys
+- **📊 Code Changes**: 156 lines added/modified in mcp_server/server_simple.py
+
 ### v4.2.2 (November 16, 2025) - 🔄 Auto-Refresh Standards on Access
 - **🎯 StandardsAccessService**: Complete intelligent access layer (605 lines)
   - Automatic freshness detection based on configurable threshold (default: 30 days)
@@ -1178,7 +1224,7 @@ For issues, questions, or suggestions:
 
 ---
 
-**Last Updated:** November 14, 2025 - Version 4.2.0 Deep Research Mode Edition
+**Last Updated:** November 18, 2025 - Version 4.3.0 Enhanced MCP Server Edition
 
 **See Also:**
 - [DEEP_RESEARCH_MODE_IMPLEMENTATION.md](DEEP_RESEARCH_MODE_IMPLEMENTATION.md) - Deep research implementation details

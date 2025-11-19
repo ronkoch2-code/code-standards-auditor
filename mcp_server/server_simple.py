@@ -23,16 +23,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Add project root to path
-project_root = Path(__file__).parent.parent.parent
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# Load environment variables
+# Load environment variables FIRST, before any other imports
 try:
     from dotenv import load_dotenv
     env_file = project_root / '.env'
     if env_file.exists():
-        load_dotenv(env_file)
+        load_dotenv(env_file, override=True)  # Override existing env vars
         logger.info(f"Loaded environment variables from {env_file}")
+        # Verify key was loaded
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if api_key:
+            logger.info(f"GEMINI_API_KEY loaded: {api_key[:10]}...{api_key[-4:]}")
+        else:
+            logger.warning("GEMINI_API_KEY not found in .env file")
 except ImportError:
     logger.info("Using system environment variables")
 
@@ -47,11 +53,18 @@ except ImportError as e:
     logger.error("Please install: pip install mcp")
     sys.exit(1)
 
-# Try to import Gemini service
+# Try to import Gemini service (configure AFTER .env is loaded)
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
-    genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+    # Configure with the loaded API key
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if api_key:
+        genai.configure(api_key=api_key)
+        logger.info("Gemini configured successfully")
+    else:
+        logger.error("GEMINI_API_KEY not set - AI features will not work")
+        GEMINI_AVAILABLE = False
 except ImportError:
     GEMINI_AVAILABLE = False
     logger.warning("Gemini not available. Install with: pip install google-generativeai")
@@ -123,6 +136,29 @@ class SimpleCodeAuditorServer:
                         "required": ["code", "language"]
                     }
                 ))
+
+                tools.append(Tool(
+                    name="research_standard",
+                    description="Research and generate a new coding standard using AI",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "topic": {
+                                "type": "string",
+                                "description": "Topic or description of the standard to create"
+                            },
+                            "language": {
+                                "type": "string",
+                                "description": "Programming language (optional, use 'general' for language-agnostic standards)"
+                            },
+                            "category": {
+                                "type": "string",
+                                "description": "Category for the standard (e.g., 'security', 'performance', 'testing')"
+                            }
+                        },
+                        "required": ["topic"]
+                    }
+                ))
             
             tools.append(Tool(
                 name="save_standard",
@@ -171,6 +207,8 @@ class SimpleCodeAuditorServer:
                     result = self._get_standards(arguments)
                 elif name == "analyze_code":
                     result = await self._analyze_code(arguments)
+                elif name == "research_standard":
+                    result = await self._research_standard(arguments)
                 elif name == "save_standard":
                     result = self._save_standard(arguments)
                 else:
@@ -200,9 +238,9 @@ class SimpleCodeAuditorServer:
         }
     
     def _get_standards(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Get standards from file system"""
+        """Get standards from file system (recursively searches subdirectories)"""
         language = args.get("language", "general")
-        
+
         standards_path = self.standards_dir / language
         if not standards_path.exists():
             return {
@@ -210,18 +248,24 @@ class SimpleCodeAuditorServer:
                 "error": f"No standards found for {language}",
                 "available_languages": [d.name for d in self.standards_dir.iterdir() if d.is_dir()]
             }
-        
+
         standards = {}
-        for file in standards_path.glob("*.md"):
+        # Recursively find all .md files in language directory and subdirectories
+        for file in standards_path.rglob("*.md"):
             try:
-                standards[file.stem] = file.read_text()
+                # Create a key that includes the subdirectory path for context
+                relative_path = file.relative_to(standards_path)
+                # Use path without extension as key (e.g., "security/api_key_security")
+                key = str(relative_path.with_suffix('')).replace('.md', '')
+                standards[key] = file.read_text()
             except Exception as e:
                 logger.error(f"Error reading {file}: {e}")
-        
+
         return {
             "language": language,
             "standards": standards,
-            "count": len(standards)
+            "count": len(standards),
+            "note": "Standards are organized by category subdirectories"
         }
     
     async def _analyze_code(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -232,11 +276,20 @@ class SimpleCodeAuditorServer:
                 "install": "pip install google-generativeai",
                 "set_env": "export GEMINI_API_KEY=your_key"
             }
-        
+
+        # Reconfigure API key at runtime to ensure fresh key
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if not api_key:
+            return {
+                "error": "GEMINI_API_KEY not set in environment",
+                "set_env": "export GEMINI_API_KEY=your_key"
+            }
+        genai.configure(api_key=api_key)
+
         code = args.get("code", "")
         language = args.get("language", "python")
         focus = args.get("focus", "all")
-        
+
         try:
             model = genai.GenerativeModel('gemini-1.5-pro')
             
@@ -268,7 +321,98 @@ Format as JSON."""
                 "code_length": len(code),
                 "language": language
             }
-    
+
+    async def _research_standard(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Research and generate a new coding standard"""
+        if not GEMINI_AVAILABLE:
+            return {
+                "error": "Gemini not available",
+                "install": "pip install google-generativeai",
+                "set_env": "export GEMINI_API_KEY=your_key"
+            }
+
+        # Reconfigure API key at runtime to ensure fresh key
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if not api_key:
+            return {
+                "error": "GEMINI_API_KEY not set in environment",
+                "set_env": "export GEMINI_API_KEY=your_key"
+            }
+        genai.configure(api_key=api_key)
+        logger.info(f"Using API key: {api_key[:10]}...{api_key[-4:]}")
+
+        topic = args.get("topic", "")
+        language = args.get("language", "general")
+        category = args.get("category", "best-practices")
+
+        if not topic:
+            return {"error": "Topic is required"}
+
+        try:
+            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+
+            prompt = f"""You are an expert software engineering standards architect. Research and create a comprehensive coding standard for:
+
+**Topic**: {topic}
+**Language**: {language}
+**Category**: {category}
+
+Create a detailed, professional coding standard document that includes:
+
+1. **Overview**: Clear explanation of what this standard covers and why it matters
+2. **Rationale**: Why this standard is important for code quality, security, or maintainability
+3. **Rules and Guidelines**: Specific, actionable rules with clear examples
+4. **Best Practices**: Industry-standard recommendations
+5. **Common Pitfalls**: Anti-patterns to avoid with examples
+6. **Code Examples**: Both good and bad examples demonstrating the standard
+7. **Tool Support**: Linters, formatters, or automated tools that can enforce these standards
+8. **References**: Links to official documentation or authoritative sources
+
+Format the document in markdown with:
+- Clear section headers
+- Code examples in appropriate language syntax
+- Tables for comparisons where helpful
+- Bullet points for lists
+- Version and metadata at the top
+
+Make it comprehensive, practical, and ready for immediate use in a professional development environment."""
+
+            response = await model.generate_content_async(prompt)
+            content = response.text
+
+            # Generate a filename from the topic
+            filename = topic.lower().replace(" ", "_").replace("-", "_")
+            filename = "".join(c for c in filename if c.isalnum() or c == "_")
+            filename = f"{filename}_v1.0.0"
+
+            # Auto-save the generated standard
+            save_result = self._save_standard({
+                "language": language,
+                "category": category,
+                "content": content,
+                "filename": filename
+            })
+
+            return {
+                "status": "generated",
+                "topic": topic,
+                "language": language,
+                "category": category,
+                "filename": filename,
+                "content": content,
+                "content_length": len(content),
+                "saved_to": save_result.get("path"),
+                "message": f"Standard generated and saved successfully"
+            }
+
+        except Exception as e:
+            logger.error(f"Standard generation failed: {e}")
+            return {
+                "error": f"Generation failed: {e}",
+                "topic": topic,
+                "language": language
+            }
+
     def _save_standard(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Save a standard to file system"""
         language = args.get("language")
