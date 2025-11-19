@@ -252,13 +252,13 @@ class Neo4jService:
             RETURN s
             ORDER BY s.category, s.name
             """
-            
+
             result = await session.run(
                 query,
                 language=language,
                 active_only=active_only
             )
-            
+
             standards = []
             async for record in result:
                 node = record["s"]
@@ -275,8 +275,183 @@ class Neo4jService:
                     version=node["version"],
                     active=node["active"]
                 ))
-            
+
             return standards
+
+    async def get_standards_by_category(
+        self,
+        category: str,
+        active_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all standards for a specific category
+        Returns standards as dictionaries for flexibility
+        """
+        async with self.driver.session(database=self.database) as session:
+            query = """
+            MATCH (s:Standard {category: $category})
+            WHERE $active_only = false OR s.active = true
+            RETURN s
+            ORDER BY s.language, s.name
+            """
+
+            result = await session.run(
+                query,
+                category=category,
+                active_only=active_only
+            )
+
+            standards = []
+            async for record in result:
+                node = record["s"]
+                standards.append({
+                    "id": node["id"],
+                    "name": node["name"],
+                    "language": node["language"],
+                    "category": node["category"],
+                    "description": node["description"],
+                    "severity": node["severity"],
+                    "examples": json.loads(node["examples"]) if isinstance(node["examples"], str) else node["examples"],
+                    "content": node.get("description", ""),  # Using description as content for now
+                    "created_at": node["created_at"],
+                    "updated_at": node["updated_at"],
+                    "version": node["version"],
+                    "active": node["active"]
+                })
+
+            logger.info(f"Found {len(standards)} standards for category: {category}")
+            return standards
+
+    async def find_standards_by_criteria(
+        self,
+        criteria: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Find standards by flexible criteria
+        Supports: language, category, context_type, agent_type, patterns
+        """
+        async with self.driver.session(database=self.database) as session:
+            # Build dynamic query based on criteria
+            where_clauses = ["s.active = true"]  # Always filter active standards
+            params = {}
+
+            if "language" in criteria:
+                where_clauses.append("s.language = $language")
+                params["language"] = criteria["language"]
+
+            if "category" in criteria:
+                where_clauses.append("s.category = $category")
+                params["category"] = criteria["category"]
+
+            if "context_type" in criteria:
+                # Match context_type with category (e.g., code_review -> review, testing -> testing)
+                where_clauses.append("(s.category = $context_type OR s.category = 'general')")
+                params["context_type"] = criteria["context_type"]
+
+            where_clause = " AND ".join(where_clauses) if where_clauses else "true"
+
+            query = f"""
+            MATCH (s:Standard)
+            WHERE {where_clause}
+            RETURN s
+            ORDER BY s.severity DESC, s.category, s.name
+            LIMIT 50
+            """
+
+            result = await session.run(query, **params)
+
+            standards = []
+            async for record in result:
+                node = record["s"]
+                standards.append({
+                    "id": node["id"],
+                    "name": node["name"],
+                    "title": node["name"],
+                    "language": node["language"],
+                    "category": node["category"],
+                    "description": node["description"],
+                    "severity": node["severity"],
+                    "examples": json.loads(node["examples"]) if isinstance(node["examples"], str) else node["examples"],
+                    "content": node.get("description", ""),
+                    "created_at": node["created_at"],
+                    "updated_at": node["updated_at"],
+                    "version": node["version"],
+                    "active": node["active"]
+                })
+
+            logger.info(f"Found {len(standards)} standards matching criteria: {criteria}")
+            return standards
+
+    async def semantic_search(
+        self,
+        query: str,
+        context: Dict[str, Any],
+        limit: int = 10,
+        threshold: float = 0.5
+    ) -> Dict[str, Any]:
+        """
+        Semantic search for standards
+        Returns results with relevance scores
+        """
+        async with self.driver.session(database=self.database) as session:
+            # For now, use text-based matching
+            # In future, can integrate vector embeddings
+
+            # Extract search terms
+            search_terms = query.lower().split()
+
+            # Build query to match on name, description, or category
+            cypher_query = """
+            MATCH (s:Standard)
+            WHERE s.active = true
+            AND (
+                toLower(s.name) CONTAINS $query
+                OR toLower(s.description) CONTAINS $query
+                OR toLower(s.category) CONTAINS $query
+            )
+            RETURN s,
+                   CASE
+                     WHEN toLower(s.name) CONTAINS $query THEN 1.0
+                     WHEN toLower(s.description) CONTAINS $query THEN 0.8
+                     WHEN toLower(s.category) CONTAINS $query THEN 0.6
+                     ELSE 0.5
+                   END as relevance_score
+            ORDER BY relevance_score DESC, s.name
+            LIMIT $limit
+            """
+
+            result = await session.run(
+                cypher_query,
+                query=query.lower(),
+                limit=limit
+            )
+
+            results = []
+            async for record in result:
+                node = record["s"]
+                score = record["relevance_score"]
+
+                if score >= threshold:
+                    results.append({
+                        "id": node["id"],
+                        "name": node["name"],
+                        "language": node["language"],
+                        "category": node["category"],
+                        "description": node["description"],
+                        "relevance_score": score,
+                        "content": node.get("description", "")
+                    })
+
+            logger.info(f"Semantic search for '{query}' returned {len(results)} results")
+
+            return {
+                "results": results,
+                "metadata": {
+                    "query": query,
+                    "total_results": len(results),
+                    "context": context
+                }
+            }
     
     async def update_standard(
         self,

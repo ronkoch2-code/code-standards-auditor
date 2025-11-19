@@ -57,7 +57,8 @@ class Settings(BaseSettings):
     REDIS_PASSWORD: Optional[str] = Field(default=None, env="REDIS_PASSWORD")
     REDIS_POOL_SIZE: int = Field(default=10, env="REDIS_POOL_SIZE")
     CACHE_TTL_SECONDS: int = Field(default=3600, env="CACHE_TTL_SECONDS")
-    
+    USE_CACHE: bool = Field(default=True, env="USE_CACHE")  # Enable/disable caching (graceful if Redis unavailable)
+
     # Google Gemini Configuration
     GEMINI_API_KEY: str = Field(default="", env="GEMINI_API_KEY")
     GEMINI_MODEL: str = Field(default="gemini-2.5-pro", env="GEMINI_MODEL")

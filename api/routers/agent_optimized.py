@@ -41,14 +41,26 @@ router = APIRouter(
 def get_research_service(request: Request) -> StandardsResearchService:
     """Get or create research service from app state"""
     if not hasattr(request.app.state, 'research_service'):
-        request.app.state.research_service = StandardsResearchService()
+        # Use already-initialized services from app state
+        neo4j = get_neo4j_service(request)
+        cache = get_cache_service(request)
+        request.app.state.research_service = StandardsResearchService(
+            neo4j_service=neo4j,
+            cache_service=cache
+        )
     return request.app.state.research_service
 
 
 def get_recommendations_service(request: Request) -> RecommendationsService:
     """Get or create recommendations service from app state"""
     if not hasattr(request.app.state, 'recommendations_service'):
-        request.app.state.recommendations_service = RecommendationsService()
+        # Use already-initialized services from app state
+        neo4j = get_neo4j_service(request)
+        cache = get_cache_service(request)
+        request.app.state.recommendations_service = RecommendationsService(
+            neo4j_service=neo4j,
+            cache_service=cache
+        )
     return request.app.state.recommendations_service
 
 
@@ -207,7 +219,7 @@ async def analyze_code_for_agent(
         )
 
         # Convert to agent-optimized format
-        agent_result = convert_to_agent_format(
+        agent_result = await convert_to_agent_format(
             analysis_result,
             applicable_standards,
             request.context

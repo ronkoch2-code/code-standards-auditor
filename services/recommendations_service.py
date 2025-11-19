@@ -108,8 +108,12 @@ class RecommendationsService:
                 await self._store_recommendations(with_examples)
             
             # Cache results
-            cache_key = self._generate_cache_key(code, language, focus_areas)
-            await self.cache.cache_audit_result(cache_key, with_examples)
+            await self.cache.set_audit_result(
+                code=code,
+                language=language,
+                result=with_examples,
+                project_id="recommendations"
+            )
             
             return with_examples
             

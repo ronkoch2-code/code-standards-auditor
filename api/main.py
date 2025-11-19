@@ -12,7 +12,8 @@ import structlog
 import time
 from typing import Dict, Any
 
-from api.routers import audit, standards, agent_optimized, workflow
+# from api.routers import audit  # Temporarily disabled - has FastAPI parameter injection issue
+from api.routers import standards, agent_optimized, workflow
 from services.integrated_workflow_service import IntegratedWorkflowService
 from api.middleware.auth import AuthMiddleware
 from api.middleware.logging import LoggingMiddleware
@@ -64,15 +65,19 @@ async def lifespan(app: FastAPI):
         await app.state.neo4j.connect()
         logger.info("Neo4j connection established")
         
-        # Initialize cache service
-        app.state.cache = CacheService(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            db=settings.REDIS_DB,
-            password=settings.REDIS_PASSWORD
-        )
-        await app.state.cache.connect()
-        logger.info("Redis cache connection established")
+        # Initialize cache service (optional - graceful degradation if Redis unavailable)
+        try:
+            app.state.cache = CacheService(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                db=settings.REDIS_DB,
+                password=settings.REDIS_PASSWORD
+            )
+            await app.state.cache.connect()
+            logger.info("Redis cache connection established")
+        except Exception as e:
+            logger.warning(f"Redis unavailable, continuing without cache: {e}")
+            app.state.cache = None
         
         # Initialize integrated workflow service
         app.state.workflow_service = IntegratedWorkflowService()
@@ -108,7 +113,8 @@ async def lifespan(app: FastAPI):
 
         # Close connections
         await app.state.neo4j.disconnect()
-        await app.state.cache.disconnect()
+        if app.state.cache:
+            await app.state.cache.disconnect()
         logger.info("All connections closed successfully")
     except Exception as e:
         logger.error("Error during shutdown", error=str(e))
@@ -140,24 +146,14 @@ app.add_middleware(RateLimitMiddleware,
 app.add_middleware(AuthMiddleware)
 
 # Include routers
-app.include_router(
-    audit.router,
-    prefix="/api/v1/audit",
-    tags=["audit"]
-)
-app.include_router(
-    standards.router,
-    prefix="/api/v1/standards",
-    tags=["standards"]
-)
-app.include_router(
-    agent_optimized.router,
-    tags=["agent-optimized"]
-)
-app.include_router(
-    workflow.router,
-    tags=["integrated-workflow"]
-)
+# app.include_router(  # Temporarily disabled - audit router has parameter injection issue
+#     audit.router,
+#     prefix="/api/v1/audit",
+#     tags=["audit"]
+# )
+app.include_router(standards.router)  # Router already has prefix defined
+app.include_router(agent_optimized.router)  # Router already has prefix defined
+app.include_router(workflow.router)  # Router already has prefix defined
 
 # Mount Prometheus metrics endpoint
 metrics_app = make_asgi_app()

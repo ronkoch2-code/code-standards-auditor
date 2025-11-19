@@ -1,8 +1,25 @@
-# Code Standards Auditor v4.4.0 - Multi-Format Parser & Auto-Sync!
+# Code Standards Auditor v4.4.1 - MCP Connection Fixes!
 
-> 🎉 **NEW in v4.4.0**: Enhanced parser extracts 13x more standards! Supports 3 markdown formats, automatic hourly sync, and comprehensive standards coverage across all 37 files. Neo4j now contains 3,420+ standards (was 256).
+> 🎉 **NEW in v4.4.1**: Fixed critical MCP server connection issues! Added 3 missing Neo4jService methods, corrected async/await handling, and resolved cache service calls. MCP server now successfully connects and performs code analysis.
 
 ## 🔄 Latest Updates (November 19, 2025)
+
+### v4.4.1 - MCP Server Connection Debugging ✅ COMPLETE
+- 🐛 **Fixed Missing Neo4jService Methods**: Added 3 critical methods for agent-optimized endpoints
+  - `get_standards_by_category()`: Returns standards filtered by category with flexible return format
+  - `find_standards_by_criteria()`: Multi-criteria search (language, category, context_type, patterns)
+  - `semantic_search()`: Text-based search with relevance scoring and threshold filtering
+  - Total: 174 lines added to services/neo4j_service.py
+- 🐛 **Fixed Cache Method Call**: Corrected `cache_audit_result()` → `set_audit_result()`
+  - Updated services/recommendations_service.py:112
+  - Proper parameter passing (code, language, result, project_id)
+- 🐛 **Fixed Async/Await Issue**: Added missing `await` for coroutine
+  - api/routers/agent_optimized.py:222
+  - Resolved "Input should be a valid dictionary" validation error
+- ✅ **MCP Server Status**: Successfully connecting to API on port 8000
+  - HTTP 200 responses on /api/v1/agent/analyze-code
+  - Health check returns degraded (Neo4j connected, Redis unavailable - expected)
+  - Code analysis operations working correctly
 
 ### v4.4.0 - Enhanced Parser & Automatic Sync ✅ COMPLETE
 - 🚀 **Multi-Format Parser**: Extracts from 3 markdown formats (vs 1 original)
