@@ -20,6 +20,8 @@ from api.middleware.rate_limit import RateLimitMiddleware
 from config.settings import Settings
 from services.neo4j_service import Neo4jService
 from services.cache_service import CacheService
+from services.standards_sync_service import StandardsSyncService, ScheduledSyncService
+from pathlib import Path
 
 # Configure structured logging
 structlog.configure(
@@ -75,7 +77,20 @@ async def lifespan(app: FastAPI):
         # Initialize integrated workflow service
         app.state.workflow_service = IntegratedWorkflowService()
         logger.info("Integrated workflow service initialized")
-        
+
+        # Initialize and start automatic standards synchronization
+        standards_dir = Path("/Volumes/FS001/pythonscripts/standards")
+        sync_service = StandardsSyncService(
+            neo4j_service=app.state.neo4j,
+            standards_dir=standards_dir
+        )
+        app.state.scheduled_sync = ScheduledSyncService(
+            sync_service=sync_service,
+            interval_seconds=3600  # Sync every hour
+        )
+        await app.state.scheduled_sync.start()
+        logger.info("Automatic standards synchronization started (interval: 1 hour)")
+
     except Exception as e:
         logger.error("Failed to initialize services", error=str(e))
         raise
@@ -84,8 +99,13 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down Code Standards Auditor API")
-    
+
     try:
+        # Stop automatic sync service
+        if hasattr(app.state, 'scheduled_sync'):
+            await app.state.scheduled_sync.stop()
+            logger.info("Automatic standards synchronization stopped")
+
         # Close connections
         await app.state.neo4j.disconnect()
         await app.state.cache.disconnect()

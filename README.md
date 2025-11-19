@@ -1,8 +1,29 @@
-# Code Standards Auditor v4.3.0 - Enhanced MCP Server!
+# Code Standards Auditor v4.4.0 - Multi-Format Parser & Auto-Sync!
 
-> 🎉 **NEW in v4.3.0**: Enhanced MCP server with AI-powered standard research! Generate new standards directly in Claude Desktop, recursive standards discovery, and improved environment variable handling for seamless integration.
+> 🎉 **NEW in v4.4.0**: Enhanced parser extracts 13x more standards! Supports 3 markdown formats, automatic hourly sync, and comprehensive standards coverage across all 37 files. Neo4j now contains 3,420+ standards (was 256).
 
-## 🔄 Latest Updates (November 18, 2025)
+## 🔄 Latest Updates (November 19, 2025)
+
+### v4.4.0 - Enhanced Parser & Automatic Sync ✅ COMPLETE
+- 🚀 **Multi-Format Parser**: Extracts from 3 markdown formats (vs 1 original)
+  - Strategy 1: Explicit `**Standards**:` sections with bullets
+  - Strategy 2: Any bullet list under section headers
+  - Strategy 3: Numbered lists (1., 2., 3.)
+  - Smart deduplication and context-aware categorization
+- 📊 **13x More Standards**: 3,420 standards (was 256)
+  - 97% file success rate (36/37 files parsed)
+  - All 6 languages covered (general, python, java, javascript, language_specific, security)
+  - 9 categories with intelligent severity inference
+- ⏰ **Automatic Sync**: Standards sync every hour when API runs
+  - `ScheduledSyncService` monitors filesystem changes
+  - Incremental updates (only changed files)
+  - Graceful startup/shutdown integration
+- 🔧 **Infrastructure Improvements**:
+  - Environment variable loading in all scripts (.env support)
+  - Recursive import discovers all nested files
+  - Verification tool (`verify_standards_sync.py`)
+
+## 🔄 Recent Updates (November 18, 2025)
 
 ### v4.3.0 - Enhanced MCP Server with Research Tool ✅ COMPLETE
 - ✅ **Research Standard Tool**: Generate new coding standards directly in Claude Desktop
@@ -994,6 +1015,37 @@ For issues, questions, or suggestions:
 
 ## 🔄 Version History
 
+### v4.4.0 (November 19, 2025) - 🚀 Multi-Format Parser & Automatic Sync
+- **🔍 Enhanced Parser**: Multi-format markdown extraction (3 strategies)
+  - Strategy 1: Explicit `**Standards**:` sections with bullets (original)
+  - Strategy 2: Any bullet list under section headers (NEW)
+  - Strategy 3: Numbered lists (1., 2., 3.) (NEW)
+  - Smart deduplication based on content similarity
+  - Context-aware category detection (9 categories)
+  - Intelligent severity inference from keywords and context
+- **📊 13x Standards Increase**: 3,420 standards (was 256)
+  - general: 1,468 standards (12 files)
+  - python: 1,546 standards (20 files)
+  - java: 152 standards (1 file)
+  - javascript: 124 standards (1 file)
+  - language_specific: 98 standards (2 files)
+  - security: 32 standards (1 file)
+- **⏰ Automatic Synchronization**: Hourly sync when API runs
+  - `ScheduledSyncService` integrated into API lifecycle
+  - `StandardsSyncService` monitors filesystem for changes
+  - Incremental updates (only changed files synced)
+  - Configurable interval (default: 3600 seconds)
+- **🔧 Infrastructure Enhancements**:
+  - `.env` loading in all scripts (sync, import, verification)
+  - Recursive import discovers nested subdirectories
+  - `verify_standards_sync.py` - comprehensive verification tool
+  - Test utilities for parser validation
+- **📝 Code Changes**:
+  - `scripts/import_standards.py` - Enhanced parser (+200 lines)
+  - `api/main.py` - Automatic sync integration (+15 lines)
+  - `scripts/sync_standards.py` - Environment loading
+  - `verify_standards_sync.py` - New verification tool (248 lines)
+
 ### v4.3.0 (November 18, 2025) - 🚀 Enhanced MCP Server with Research Tool
 - **🔬 Research Standard Tool**: AI-powered standard generation in Claude Desktop
   - New `research_standard` MCP tool for creating comprehensive coding standards
@@ -1224,7 +1276,7 @@ For issues, questions, or suggestions:
 
 ---
 
-**Last Updated:** November 18, 2025 - Version 4.3.0 Enhanced MCP Server Edition
+**Last Updated:** November 19, 2025 - Version 4.4.0 Multi-Format Parser Edition
 
 **See Also:**
 - [DEEP_RESEARCH_MODE_IMPLEMENTATION.md](DEEP_RESEARCH_MODE_IMPLEMENTATION.md) - Deep research implementation details

@@ -9,9 +9,16 @@ Can be run as a standalone script or scheduled with cron.
 import asyncio
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# Load .env file before importing Settings
+env_file = project_root / '.env'
+if env_file.exists():
+    load_dotenv(env_file, override=True)
 
 from services.neo4j_service import Neo4jService
 from services.standards_sync_service import StandardsSyncService
