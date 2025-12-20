@@ -542,7 +542,9 @@ class IntegratedWorkflowService:
             if standard_id and self.neo4j_service:
                 standard = await self.neo4j_service.get_standard(standard_id)
                 if standard:
-                    standards_content.append(standard.get("content", ""))
+                    # Standard is a dataclass, use description (aliased as content)
+                    content = standard.description if hasattr(standard, 'description') else standard.get("content", "")
+                    standards_content.append(content)
             
             # Analyze each code sample
             for i, code_sample in enumerate(code_samples):

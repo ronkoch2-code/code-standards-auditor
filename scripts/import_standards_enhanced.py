@@ -366,7 +366,8 @@ class StandardsImporter:
                         active=True
                     )
 
-                    await self.neo4j.create_standard(standard)
+                    # Use upsert to prevent duplicates (MERGE instead of CREATE)
+                    await self.neo4j.upsert_standard(standard)
                     self.imported_count += 1
 
                 except Exception as e:

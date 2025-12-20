@@ -12,6 +12,16 @@ from datetime import datetime, timedelta
 import logging
 from dataclasses import dataclass, asdict
 from enum import Enum
+from pathlib import Path
+
+# Load .env file before configuring Gemini API
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent.parent / '.env'
+    if env_path.exists():
+        load_dotenv(env_path, override=True)
+except ImportError:
+    pass  # dotenv not available, rely on system env vars
 
 import google.generativeai as genai
 from google.generativeai import caching

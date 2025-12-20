@@ -256,7 +256,7 @@ async def search_standards_for_agent(
         logger.info(f"Agent standards search: '{request.query}' for context: {request.context.context_type}")
 
         # Build search context
-        search_context = build_search_context(request.context, request.filters)
+        search_context = await build_search_context(request.context, request.filters)
 
         # Execute enhanced search
         search_results = await execute_enhanced_search(
@@ -758,12 +758,59 @@ async def find_related_standards(search_results: Dict[str, Any], context: AgentC
     return []
 
 def format_search_results_for_agent(search_results: Dict[str, Any], context: AgentContext) -> StandardSearchResult:
+    """Format search results from Neo4j for agent consumption."""
+    results = search_results.get("results", [])
+    metadata = search_results.get("metadata", {})
+
+    # Convert results to StandardSummary objects
+    standards = []
+    for result in results:
+        try:
+            # Determine relevance based on score and context
+            score = result.get("relevance_score", 0.5)
+            if score >= 0.9:
+                relevance = StandardRelevance.CRITICAL
+            elif score >= 0.7:
+                relevance = StandardRelevance.HIGH
+            elif score >= 0.5:
+                relevance = StandardRelevance.MEDIUM
+            else:
+                relevance = StandardRelevance.LOW
+
+            # Extract key points from description
+            description = result.get("description", "")
+            key_points = []
+            if description:
+                # Extract first 3 sentences as key points
+                sentences = description.split(". ")[:3]
+                key_points = [s.strip() + "." for s in sentences if s.strip()]
+
+            summary = StandardSummary(
+                id=result.get("id", ""),
+                title=result.get("name", "Unknown"),
+                category=result.get("category", "general"),
+                language=result.get("language", "general"),
+                relevance=relevance,
+                confidence=min(score, 1.0),
+                key_points=key_points if key_points else ["See full standard for details"],
+                applicability={
+                    "context_type": context.context_type.value,
+                    "agent_type": context.agent_type
+                },
+                examples_count=len(result.get("examples", [])),
+                last_updated=result.get("updated_at", datetime.now().isoformat())
+            )
+            standards.append(summary)
+        except Exception as e:
+            logger.warning(f"Error formatting standard result: {e}")
+            continue
+
     return StandardSearchResult(
-        standards=[],
-        search_metadata={},
+        standards=standards,
+        search_metadata=metadata,
         related_queries=[],
         context_suggestions=[],
-        total_matches=0
+        total_matches=len(standards)
     )
 
 async def retrieve_standards_batch(standard_ids: List[str], include_examples: bool = True, format_type: str = "structured") -> List[Dict[str, Any]]:

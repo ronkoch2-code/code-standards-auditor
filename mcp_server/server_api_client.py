@@ -52,8 +52,8 @@ except ImportError as e:
     logger.error("Install with: pip install mcp httpx")
     sys.exit(1)
 
-# Configuration
-API_BASE_URL = os.getenv("CODE_AUDITOR_API_URL", "http://localhost:8000")
+# Configuration - default to port 8001 where the API runs
+API_BASE_URL = os.getenv("CODE_AUDITOR_API_URL", "http://localhost:8001")
 API_KEY = os.getenv("CODE_AUDITOR_API_KEY", "")
 REQUEST_TIMEOUT = 30.0
 
@@ -208,6 +208,59 @@ class StandardsAPIClient:
             logger.error(f"Error getting recommendations: {e}")
             return {"error": str(e)}
 
+    async def create_standard(
+        self,
+        topic: str,
+        category: str,
+        language: str = "general",
+        auto_approve: bool = False
+    ) -> Dict[str, Any]:
+        """Create a new coding standard via research API"""
+        try:
+            payload = {
+                "topic": topic,
+                "category": category,
+                "context": {"language": language},
+                "auto_approve": auto_approve
+            }
+
+            response = await self.client.post("/api/v1/standards/research", json=payload)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error creating standard: {e.response.status_code} - {e.response.text}")
+            return {"error": f"HTTP {e.response.status_code}", "details": str(e)}
+        except Exception as e:
+            logger.error(f"Error creating standard: {e}")
+            return {"error": str(e)}
+
+    async def update_standard(
+        self,
+        standard_id: str,
+        content: Optional[str] = None,
+        version: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Update an existing coding standard via API"""
+        try:
+            payload = {"standard_id": standard_id}
+            if content:
+                payload["content"] = content
+            if version:
+                payload["version"] = version
+            if metadata:
+                payload["metadata"] = metadata
+
+            response = await self.client.put(f"/api/v1/standards/{standard_id}", json=payload)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error updating standard: {e.response.status_code}")
+            return {"error": f"HTTP {e.response.status_code}", "details": str(e)}
+        except Exception as e:
+            logger.error(f"Error updating standard: {e}")
+            return {"error": str(e)}
+
 
 # Initialize MCP server and API client
 server = Server("code-standards-auditor-api")
@@ -330,6 +383,62 @@ async def list_tools() -> List[Tool]:
                 },
                 "required": ["code", "language"]
             }
+        ),
+        Tool(
+            name="create_standard",
+            description="Create a new coding standard using AI research. Generates comprehensive standards documentation.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "Topic or description of the standard to create (e.g., 'Python async error handling', 'REST API versioning')"
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Category for the standard",
+                        "enum": ["security", "performance", "testing", "best-practices", "error-handling", "architecture", "style", "documentation", "api", "deployment"]
+                    },
+                    "language": {
+                        "type": "string",
+                        "description": "Programming language (optional, defaults to 'general')",
+                        "enum": ["python", "javascript", "java", "typescript", "go", "rust", "general"],
+                        "default": "general"
+                    },
+                    "auto_approve": {
+                        "type": "boolean",
+                        "description": "Automatically approve the standard (default: false)",
+                        "default": False
+                    }
+                },
+                "required": ["topic", "category"]
+            }
+        ),
+        Tool(
+            name="update_standard",
+            description="Update an existing coding standard with new content, version, or metadata.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "standard_id": {
+                        "type": "string",
+                        "description": "ID of the standard to update"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "New content for the standard (optional)"
+                    },
+                    "version": {
+                        "type": "string",
+                        "description": "New version number (e.g., '1.1.0') (optional)"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "description": "Additional metadata to update (optional)"
+                    }
+                },
+                "required": ["standard_id"]
+            }
         )
     ]
 
@@ -409,6 +518,42 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 code=code,
                 language=language,
                 priority_threshold=priority_threshold
+            )
+
+            return [TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+
+        elif name == "create_standard":
+            topic = arguments.get("topic")
+            category = arguments.get("category")
+            language = arguments.get("language", "general")
+            auto_approve = arguments.get("auto_approve", False)
+
+            result = await api_client.create_standard(
+                topic=topic,
+                category=category,
+                language=language,
+                auto_approve=auto_approve
+            )
+
+            return [TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+
+        elif name == "update_standard":
+            standard_id = arguments.get("standard_id")
+            content = arguments.get("content")
+            version = arguments.get("version")
+            metadata = arguments.get("metadata")
+
+            result = await api_client.update_standard(
+                standard_id=standard_id,
+                content=content,
+                version=version,
+                metadata=metadata
             )
 
             return [TextContent(

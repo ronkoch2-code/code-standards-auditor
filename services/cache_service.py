@@ -220,9 +220,49 @@ class CacheService:
         else:
             # Clear all standards
             await self.cache_manager.clear_namespace("standards")
-        
+
         logger.info(f"Invalidated standards cache for language: {language or 'all'}")
-    
+
+    async def invalidate_pattern(self, pattern: str) -> int:
+        """
+        Invalidate all cache entries matching a pattern.
+
+        Args:
+            pattern: Pattern to match (e.g., "standard:123*")
+
+        Returns:
+            Number of entries deleted
+        """
+        try:
+            # Use cache_manager's pattern deletion if available
+            if hasattr(self.cache_manager, 'delete_pattern'):
+                deleted = await self.cache_manager.delete_pattern(pattern)
+            else:
+                # Fallback: extract namespace and key from pattern
+                # Pattern format: "namespace:key*" or just "key*"
+                if ":" in pattern:
+                    parts = pattern.split(":", 1)
+                    namespace = parts[0]
+                    key_pattern = parts[1].rstrip("*")
+                    # Delete the specific key
+                    if await self.cache_manager.delete(key_pattern, namespace=namespace):
+                        deleted = 1
+                    else:
+                        deleted = 0
+                else:
+                    # No namespace, try deleting directly
+                    key = pattern.rstrip("*")
+                    if await self.cache_manager.delete(key):
+                        deleted = 1
+                    else:
+                        deleted = 0
+
+            logger.info(f"Invalidated {deleted} cache entries matching pattern: {pattern}")
+            return deleted
+        except Exception as e:
+            logger.warning(f"Failed to invalidate pattern {pattern}: {e}")
+            return 0
+
     async def get_cache_stats(self) -> Dict[str, Any]:
         """Get comprehensive cache statistics"""
         stats = await self.cache_manager.get_stats()

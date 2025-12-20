@@ -324,23 +324,29 @@ class StandardsSyncService:
             self.file_metadata[rel_path].standards_count = len(standards_data)
 
     async def _create_standard_with_source(self, standard: Standard, file_source: str):
-        """Create standard with file source tracking"""
+        """Create or update standard with file source tracking using MERGE to prevent duplicates"""
         async with self.neo4j.driver.session(database=self.neo4j.database) as session:
+            # Use MERGE on (language, category, name) to prevent duplicates
             query = """
-            CREATE (s:Standard {
-                id: $id,
-                name: $name,
-                language: $language,
-                category: $category,
-                description: $description,
-                severity: $severity,
-                examples: $examples,
-                created_at: $created_at,
-                updated_at: $updated_at,
-                version: $version,
-                active: $active,
-                file_source: $file_source
-            })
+            MERGE (s:Standard {language: $language, category: $category, name: $name})
+            ON CREATE SET
+                s.id = $id,
+                s.description = $description,
+                s.severity = $severity,
+                s.examples = $examples,
+                s.created_at = $created_at,
+                s.updated_at = $updated_at,
+                s.version = $version,
+                s.active = $active,
+                s.file_source = $file_source
+            ON MATCH SET
+                s.description = $description,
+                s.severity = $severity,
+                s.examples = $examples,
+                s.updated_at = $updated_at,
+                s.version = $version,
+                s.active = $active,
+                s.file_source = $file_source
             RETURN s
             """
 

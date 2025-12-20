@@ -401,6 +401,91 @@ Control features via environment variables:
    - Update the issue with progress comments if work is ongoing: `gh issue comment <number> -b "Progress update message"`
    - Reference issue numbers in commit messages when relevant (e.g., "Fix #2: Add configurable LLM selection")
 
+### Agent-Based Development Workflow
+
+Use specialized agents for efficient development. This approach separates planning from implementation, ensuring well-designed solutions before code is written.
+
+#### Architect Agent (Plan Mode)
+Use the **Plan agent** for designing implementation strategies before writing code:
+
+**When to use:**
+- New feature implementation requiring architectural decisions
+- Multi-file changes or refactoring tasks
+- Tasks with multiple valid approaches
+- Complex bug fixes requiring investigation
+- Any task where you're unsure of the best approach
+
+**How to invoke:**
+- Use `EnterPlanMode` tool to transition into planning mode
+- The Architect agent will explore the codebase, understand patterns, and design an implementation plan
+- Review and approve the plan before implementation begins
+
+**Example workflow:**
+```
+User: "Add a new caching layer for API responses"
+→ Claude enters Plan mode
+→ Architect explores existing cache patterns, identifies integration points
+→ Produces detailed implementation plan with file changes
+→ User approves plan
+→ Implementation proceeds with clear direction
+```
+
+#### Code Worker Agent (Explore/General-Purpose)
+Use the **Explore agent** for codebase investigation and the **general-purpose agent** for complex multi-step tasks:
+
+**Explore Agent - When to use:**
+- Finding files by patterns (e.g., "src/**/*.py")
+- Searching code for keywords or patterns
+- Understanding how specific features work
+- Answering questions about the codebase structure
+
+**How to invoke:**
+```
+Task tool with subagent_type='Explore'
+Specify thoroughness: "quick", "medium", or "very thorough"
+```
+
+**General-Purpose Agent - When to use:**
+- Complex searches requiring multiple rounds
+- Multi-step research tasks
+- When you need autonomous investigation
+
+**How to invoke:**
+```
+Task tool with subagent_type='general-purpose'
+```
+
+#### Development Best Practices with Agents
+
+1. **Plan First, Code Second**
+   - For any non-trivial task, start with the Architect agent
+   - Get user approval on the approach before implementation
+   - This prevents wasted effort from incorrect assumptions
+
+2. **Use Explore for Context**
+   - Before modifying code, use Explore to understand existing patterns
+   - Check for similar implementations in the codebase
+   - Identify all files that may need changes
+
+3. **Parallel Agent Execution**
+   - Launch multiple agents in parallel when tasks are independent
+   - Example: Explore agent for research + Plan agent for design simultaneously
+
+4. **Agent Handoff Pattern**
+   ```
+   1. Explore agent → Understand codebase context
+   2. Plan agent → Design implementation approach
+   3. User approval → Confirm direction
+   4. Direct implementation → Write the code
+   5. Explore agent → Verify changes don't break patterns
+   ```
+
+5. **When NOT to use agents:**
+   - Simple, single-file changes
+   - Typo fixes or minor edits
+   - Tasks with explicit, detailed instructions
+   - Reading a specific known file (use Read tool directly)
+
 ### Ending a Session
 1. **Update README.md** with any significant changes or new features
 2. **Update DEVELOPMENT_STATE.md** with final status

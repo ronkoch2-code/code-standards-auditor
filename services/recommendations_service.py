@@ -128,20 +128,21 @@ class RecommendationsService:
     ) -> List[Dict[str, Any]]:
         """Get applicable standards for the given language and context."""
         standards = []
-        
-        # Get language-specific standards
-        if settings.USE_NEO4J:
+
+        # Only query Neo4j if it's available
+        if self.neo4j and settings.USE_NEO4J:
+            # Get language-specific standards
             graph_standards = await self.neo4j.get_standards_by_category(language)
             standards.extend(graph_standards)
-        
-        # Get general standards
-        general_standards = await self.neo4j.get_standards_by_category("general")
-        standards.extend(general_standards)
-        
+
+            # Get general standards
+            general_standards = await self.neo4j.get_standards_by_category("general")
+            standards.extend(general_standards)
+
         # Filter by context if provided
         if context:
             standards = self._filter_standards_by_context(standards, context)
-        
+
         return standards
     
     def _filter_standards_by_context(
@@ -509,18 +510,30 @@ class RecommendationsService:
     
     async def _store_recommendations(self, recommendations_data: Dict[str, Any]) -> None:
         """Store recommendations in Neo4j."""
+        if not self.neo4j:
+            logger.warning("Neo4j not available, skipping recommendation storage")
+            return
+
         try:
-            # Store each recommendation as a node with relationships
-            for rec in recommendations_data['recommendations']:
-                await self.neo4j.track_violation(
-                    file_path="analysis",
-                    line_number=0,
-                    violation_type=rec['type'],
-                    severity=rec['priority'],
-                    message=rec['title'],
+            from services.neo4j_service import Violation
+            from datetime import datetime
+            import uuid
+
+            # Store each recommendation as a violation node with relationships
+            for rec in recommendations_data.get('recommendations', []):
+                violation = Violation(
+                    id=str(uuid.uuid4()),
                     standard_id=rec.get('issue_id', 'unknown'),
-                    suggested_fix=rec.get('implementation_example', {}).get('after', '')
+                    file_path="analysis",
+                    line=0,
+                    column=0,
+                    message=rec.get('title', ''),
+                    severity=rec.get('priority', 'medium'),
+                    suggestion=rec.get('implementation_example', {}).get('after', ''),
+                    project_id="recommendations",
+                    timestamp=datetime.now()
                 )
+                await self.neo4j.record_violation(violation)
         except Exception as e:
             logger.error(f"Error storing recommendations: {e}")
     

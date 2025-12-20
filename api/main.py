@@ -60,7 +60,8 @@ async def lifespan(app: FastAPI):
         app.state.neo4j = Neo4jService(
             uri=settings.NEO4J_URI,
             user=settings.NEO4J_USER,
-            password=settings.NEO4J_PASSWORD
+            password=settings.NEO4J_PASSWORD,
+            database=settings.NEO4J_DATABASE
         )
         await app.state.neo4j.connect()
         logger.info("Neo4j connection established")

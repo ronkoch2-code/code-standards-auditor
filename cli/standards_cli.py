@@ -378,7 +378,7 @@ class StandardsCLI:
             
             # Save to Neo4j if available
             if self.neo4j_service and Confirm.ask("\n[yellow]Save to Neo4j database?[/yellow]"):
-                neo4j_result = self.neo4j_service.create_standard(
+                neo4j_result = await self.neo4j_service.create_standard_from_dict(
                     standard_id=standard.get("id"),
                     name=standard.get("title"),
                     category=standard.get("category"),

@@ -330,8 +330,12 @@ class StandardsResearchService:
     
     async def _store_standard_in_graph(self, standard: Dict[str, Any]) -> None:
         """Store the researched standard in Neo4j."""
+        if not self.neo4j:
+            logger.warning("Neo4j service not available, skipping graph storage")
+            return
+
         try:
-            await self.neo4j.create_standard(
+            await self.neo4j.create_standard_from_dict(
                 standard_id=standard["id"],
                 title=standard["title"],
                 category=standard["category"],

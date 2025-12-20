@@ -1,12 +1,12 @@
 {
   "mcpServers": {
     "code-standards-auditor": {
-      "command": "python3",
+      "command": "/Volumes/FS001/pythonscripts/code-standards-auditor/venv/bin/python3",
       "args": [
         "/Volumes/FS001/pythonscripts/code-standards-auditor/mcp_server/server_api_client.py"
       ],
       "env": {
-        "CODE_AUDITOR_API_URL": "http://localhost:8000",
+        "CODE_AUDITOR_API_URL": "http://localhost:8001",
         "GEMINI_API_KEY": "${GEMINI_API_KEY}",
         "PYTHONPATH": "/Volumes/FS001/pythonscripts/code-standards-auditor"
       }

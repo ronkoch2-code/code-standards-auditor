@@ -31,6 +31,22 @@ class Standard:
     version: str
     active: bool = True
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert Standard to dictionary with content alias for description."""
+        result = asdict(self)
+        # Add content as alias for description (used by many consumers)
+        result["content"] = self.description
+        # Convert datetime to ISO format strings
+        if isinstance(result.get("created_at"), datetime):
+            result["created_at"] = result["created_at"].isoformat()
+        if isinstance(result.get("updated_at"), datetime):
+            result["updated_at"] = result["updated_at"].isoformat()
+        return result
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Dict-like get method for backwards compatibility."""
+        return self.to_dict().get(key, default)
+
 
 @dataclass
 class Violation:
@@ -206,7 +222,54 @@ class Neo4jService:
             record = await result.single()
             logger.info(f"Created standard: {standard.id}")
             return standard
-    
+
+    async def create_standard_from_dict(
+        self,
+        standard_id: str = None,
+        name: str = None,
+        title: str = None,  # Alias for name
+        language: str = "general",
+        category: str = "general",
+        description: str = None,
+        content: str = None,  # Alias for description
+        severity: str = "info",
+        examples: List[Dict[str, str]] = None,
+        version: str = "1.0.0",
+        metadata: Dict[str, Any] = None,
+        active: bool = True
+    ) -> Optional[Standard]:
+        """
+        Create a standard from keyword arguments.
+
+        This method accepts the varied parameter names used by different callers
+        and maps them to the Standard dataclass fields.
+        """
+        import uuid
+
+        # Map aliases
+        actual_name = name or title or "Unnamed Standard"
+        actual_description = description or content or ""
+        actual_id = standard_id or f"std_{uuid.uuid4().hex[:12]}"
+
+        # Create Standard object
+        now = datetime.now()
+        standard = Standard(
+            id=actual_id,
+            name=actual_name,
+            language=language,
+            category=category,
+            description=actual_description,
+            severity=severity,
+            examples=examples or [],
+            created_at=now,
+            updated_at=now,
+            version=version,
+            active=active
+        )
+
+        # Use the existing create_standard method
+        return await self.create_standard(standard)
+
     async def get_standard(self, standard_id: str) -> Optional[Standard]:
         """
         Get a standard by ID
@@ -248,7 +311,7 @@ class Neo4jService:
         async with self.driver.session(database=self.database) as session:
             query = """
             MATCH (s:Standard {language: $language})
-            WHERE $active_only = false OR s.active = true
+            WHERE $active_only = false OR COALESCE(s.active, true) = true
             RETURN s
             ORDER BY s.category, s.name
             """
@@ -278,6 +341,52 @@ class Neo4jService:
 
             return standards
 
+    async def get_all_standards(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        active_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all standards with pagination.
+        Returns standards as dictionaries for flexibility.
+        """
+        async with self.driver.session(database=self.database) as session:
+            query = """
+            MATCH (s:Standard)
+            RETURN s
+            ORDER BY s.language, s.category, s.name
+            SKIP $offset
+            LIMIT $limit
+            """
+
+            result = await session.run(
+                query,
+                offset=offset,
+                limit=limit
+            )
+
+            standards = []
+            async for record in result:
+                node = record["s"]
+                standards.append({
+                    "id": node.get("id", ""),
+                    "name": node.get("name", ""),
+                    "language": node.get("language", ""),
+                    "category": node.get("category", ""),
+                    "description": node.get("description", ""),
+                    "severity": node.get("severity", "medium"),
+                    "examples": json.loads(node["examples"]) if isinstance(node.get("examples"), str) else node.get("examples", []),
+                    "content": node.get("description", ""),
+                    "created_at": node.get("created_at", ""),
+                    "updated_at": node.get("updated_at", ""),
+                    "version": node.get("version", "1.0.0"),
+                    "active": node.get("active", True)
+                })
+
+            logger.info(f"Found {len(standards)} standards (limit={limit}, offset={offset})")
+            return standards
+
     async def get_standards_by_category(
         self,
         category: str,
@@ -290,7 +399,7 @@ class Neo4jService:
         async with self.driver.session(database=self.database) as session:
             query = """
             MATCH (s:Standard {category: $category})
-            WHERE $active_only = false OR s.active = true
+            WHERE $active_only = false OR COALESCE(s.active, true) = true
             RETURN s
             ORDER BY s.language, s.name
             """
@@ -332,7 +441,7 @@ class Neo4jService:
         """
         async with self.driver.session(database=self.database) as session:
             # Build dynamic query based on criteria
-            where_clauses = ["s.active = true"]  # Always filter active standards
+            where_clauses = ["COALESCE(s.active, true) = true"]  # Always filter active standards
             params = {}
 
             if "language" in criteria:
@@ -398,22 +507,22 @@ class Neo4jService:
             # In future, can integrate vector embeddings
 
             # Extract search terms
-            search_terms = query.lower().split()
+            search_term = query.lower()
 
             # Build query to match on name, description, or category
             cypher_query = """
             MATCH (s:Standard)
-            WHERE s.active = true
+            WHERE COALESCE(s.active, true) = true
             AND (
-                toLower(s.name) CONTAINS $query
-                OR toLower(s.description) CONTAINS $query
-                OR toLower(s.category) CONTAINS $query
+                toLower(s.name) CONTAINS $search_term
+                OR toLower(s.description) CONTAINS $search_term
+                OR toLower(s.category) CONTAINS $search_term
             )
             RETURN s,
                    CASE
-                     WHEN toLower(s.name) CONTAINS $query THEN 1.0
-                     WHEN toLower(s.description) CONTAINS $query THEN 0.8
-                     WHEN toLower(s.category) CONTAINS $query THEN 0.6
+                     WHEN toLower(s.name) CONTAINS $search_term THEN 1.0
+                     WHEN toLower(s.description) CONTAINS $search_term THEN 0.8
+                     WHEN toLower(s.category) CONTAINS $search_term THEN 0.6
                      ELSE 0.5
                    END as relevance_score
             ORDER BY relevance_score DESC, s.name
@@ -422,7 +531,7 @@ class Neo4jService:
 
             result = await session.run(
                 cypher_query,
-                query=query.lower(),
+                search_term=search_term,
                 limit=limit
             )
 
@@ -810,3 +919,125 @@ class Neo4jService:
                     evolution_data["patterns_evolved"] += len(patterns)
             
             return evolution_data
+
+    # Duplicate Management
+
+    async def find_duplicate_standards(self) -> List[Dict[str, Any]]:
+        """
+        Find duplicate standards based on (language, category, name).
+        Returns groups of duplicates with their IDs.
+        """
+        async with self.driver.session(database=self.database) as session:
+            query = """
+            MATCH (s:Standard)
+            WITH s.language AS language, s.category AS category, s.name AS name,
+                 COLLECT(s.id) AS ids, COUNT(s) AS count
+            WHERE count > 1
+            RETURN language, category, name, ids, count
+            ORDER BY count DESC, language, category, name
+            """
+
+            result = await session.run(query)
+            duplicates = []
+            async for record in result:
+                duplicates.append({
+                    "language": record["language"],
+                    "category": record["category"],
+                    "name": record["name"],
+                    "ids": record["ids"],
+                    "count": record["count"]
+                })
+
+            logger.info(f"Found {len(duplicates)} duplicate groups")
+            return duplicates
+
+    async def cleanup_duplicate_standards(self, keep_strategy: str = "first") -> Dict[str, Any]:
+        """
+        Remove duplicate standards, keeping one per (language, category, name) group.
+
+        Args:
+            keep_strategy: "first" keeps first occurrence, "newest" keeps most recent
+
+        Returns:
+            Summary of cleanup operation
+        """
+        duplicates = await self.find_duplicate_standards()
+
+        if not duplicates:
+            return {
+                "deleted_count": 0,
+                "duplicate_groups": 0,
+                "message": "No duplicates found"
+            }
+
+        deleted_total = 0
+
+        async with self.driver.session(database=self.database) as session:
+            for dup in duplicates:
+                # Keep first ID, delete the rest
+                ids_to_delete = dup["ids"][1:]  # Skip first one
+
+                delete_query = """
+                MATCH (s:Standard)
+                WHERE s.id IN $ids
+                DETACH DELETE s
+                RETURN count(*) AS deleted
+                """
+
+                result = await session.run(delete_query, ids=ids_to_delete)
+                record = await result.single()
+                deleted_total += record["deleted"] if record else 0
+
+        logger.info(f"Cleanup complete: deleted {deleted_total} duplicate standards from {len(duplicates)} groups")
+
+        return {
+            "deleted_count": deleted_total,
+            "duplicate_groups": len(duplicates),
+            "message": f"Deleted {deleted_total} duplicate standards"
+        }
+
+    async def upsert_standard(self, standard: Standard) -> Standard:
+        """
+        Insert or update a standard using MERGE to prevent duplicates.
+        Uses (language, category, name) as the unique key.
+        """
+        async with self.driver.session(database=self.database) as session:
+            query = """
+            MERGE (s:Standard {language: $language, category: $category, name: $name})
+            ON CREATE SET
+                s.id = $id,
+                s.description = $description,
+                s.severity = $severity,
+                s.examples = $examples,
+                s.created_at = $created_at,
+                s.updated_at = $updated_at,
+                s.version = $version,
+                s.active = $active
+            ON MATCH SET
+                s.description = $description,
+                s.severity = $severity,
+                s.examples = $examples,
+                s.updated_at = $updated_at,
+                s.version = $version,
+                s.active = $active
+            RETURN s
+            """
+
+            result = await session.run(
+                query,
+                id=standard.id,
+                name=standard.name,
+                language=standard.language,
+                category=standard.category,
+                description=standard.description,
+                severity=standard.severity,
+                examples=json.dumps(standard.examples),
+                created_at=standard.created_at.isoformat(),
+                updated_at=standard.updated_at.isoformat(),
+                version=standard.version,
+                active=standard.active
+            )
+
+            record = await result.single()
+            logger.info(f"Upserted standard: {standard.language}/{standard.category}/{standard.name}")
+            return standard

@@ -123,7 +123,8 @@ class StandardValidationRequest(BaseModel):
 
 class StandardUpdateRequest(BaseModel):
     """Request model for updating a standard."""
-    standard_id: str = Field(..., description="ID of the standard to update")
+    # standard_id is optional in body since it's provided in URL path
+    standard_id: Optional[str] = Field(default=None, description="ID of the standard to update (optional, taken from URL)")
     content: Optional[str] = Field(default=None, description="New content")
     version: Optional[str] = Field(default=None, description="New version")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Updated metadata")
@@ -417,34 +418,40 @@ async def update_standard(
     try:
         if not neo4j_service:
             raise HTTPException(status_code=503, detail="Neo4j not configured")
-        
+
         # Get existing standard
         existing = await neo4j_service.get_standard(standard_id)
         if not existing:
             raise HTTPException(status_code=404, detail="Standard not found")
-        
-        # Update fields
+
+        # Build updates dict (update_standard expects a dict, not Standard object)
+        updates = {}
         if request.content:
-            existing["content"] = request.content
+            updates["description"] = request.content  # 'content' maps to 'description' field
         if request.version:
-            existing["version"] = request.version
-        if request.metadata:
-            existing["metadata"].update(request.metadata)
-        
-        existing["updated_at"] = datetime.now().isoformat()
-        
+            updates["version"] = request.version
+        # Note: metadata is not a field in Standard dataclass, skip it
+
+        # Only update if there are changes
+        if not updates:
+            return {
+                "message": "No changes to update",
+                "standard_id": standard_id
+            }
+
         # Update in Neo4j
-        await neo4j_service.update_standard(standard_id, existing)
-        
+        updated = await neo4j_service.update_standard(standard_id, updates)
+
         # Invalidate cache
         if cache_service:
             await cache_service.invalidate_pattern(f"standard:{standard_id}*")
-        
+
         return {
             "message": "Standard updated successfully",
-            "standard": existing
+            "standard_id": standard_id,
+            "updated_fields": list(updates.keys())
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -574,9 +581,79 @@ async def validate_standard_background(content: str, category: str, standard_id:
         logger.error(f"Error validating standard {standard_id}: {e}")
 
 
+# Duplicate Management
+
+@router.get("/duplicates")
+async def find_duplicates(
+    neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service)
+):
+    """
+    Find duplicate standards in the database.
+
+    Returns groups of standards that have the same (language, category, name).
+    """
+    try:
+        if not neo4j_service:
+            raise HTTPException(status_code=503, detail="Neo4j not configured")
+
+        duplicates = await neo4j_service.find_duplicate_standards()
+
+        total_extra = sum(d["count"] - 1 for d in duplicates)
+
+        return {
+            "duplicate_groups": len(duplicates),
+            "total_duplicates": total_extra,
+            "duplicates": duplicates[:50],  # Limit response size
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error finding duplicates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/cleanup-duplicates")
+async def cleanup_duplicates(
+    neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service),
+    cache_service: Optional[CacheService] = Depends(get_cache_service)
+):
+    """
+    Remove duplicate standards from the database.
+
+    Keeps the first occurrence of each (language, category, name) group
+    and deletes the rest.
+    """
+    try:
+        if not neo4j_service:
+            raise HTTPException(status_code=503, detail="Neo4j not configured")
+
+        result = await neo4j_service.cleanup_duplicate_standards()
+
+        # Invalidate all standards cache
+        if cache_service and result["deleted_count"] > 0:
+            await cache_service.invalidate_pattern("standard:*")
+            await cache_service.invalidate_pattern("agent_query:*")
+
+        return {
+            **result,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error cleaning up duplicates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Health check
 @router.get("/health")
-async def health_check():
+async def health_check(
+    neo4j_service: Optional[Neo4jService] = Depends(get_neo4j_service),
+    cache_service: Optional[CacheService] = Depends(get_cache_service)
+):
     """Check health of standards service."""
     return {
         "status": "healthy",

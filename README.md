@@ -1,8 +1,42 @@
-# Code Standards Auditor v4.5.0 - API-First MCP Architecture!
+# Code Standards Auditor v4.6.0 - Code Consistency & Agent Workflow!
 
-> 🎉 **NEW in v4.5.0**: Introduced API-first MCP server architecture for remote access! New `server_api_client.py` enables multi-client support (Claude Desktop, Claude Code, other agents) via HTTP API. Clean separation eliminates Neo4j stdout pollution while providing centralized caching and auth.
+> 🎉 **NEW in v4.6.0**: Major code consistency improvements! Fixed Standard dataclass/dict mismatches, added missing service methods, enhanced service factory with graceful degradation, and documented Agent-Based Development Workflow in CLAUDE.md.
 
-## 🔄 Latest Updates (November 22, 2025)
+## 🔄 Latest Updates (December 20, 2025)
+
+### v4.6.0 - Code Consistency & Agent Workflow ✅ COMPLETE
+- 🔧 **Standard Dataclass Enhancements** (`services/neo4j_service.py`):
+  - Added `to_dict()` method with `content` alias for `description` field
+  - Added `get()` method for backwards-compatible dict-style access
+  - Added `create_standard_from_dict()` for flexible standard creation
+- 🔧 **CacheService Improvements** (`services/cache_service.py`):
+  - Added missing `invalidate_pattern()` method for pattern-based cache invalidation
+- 🔧 **Service Factory Fixes** (`utils/service_factory.py`):
+  - `get_neo4j_service()` now returns `Optional[Neo4jService]`
+  - Added `USE_NEO4J` and credential checks with graceful degradation
+  - Added `get_research_service()` with lazy import to avoid circular dependencies
+- 🔧 **RecommendationsService Fixes** (`services/recommendations_service.py`):
+  - Fixed missing None checks for `self.neo4j` in `_get_applicable_standards()`
+  - Fixed `track_violation` → `record_violation` method name mismatch
+  - Proper `Violation` dataclass usage for storing recommendations
+- 🔧 **API Endpoint Fixes** (`api/routers/standards.py`):
+  - Fixed `update_standard` endpoint - Standard object item assignment error
+  - Made `standard_id` optional in `StandardUpdateRequest` (provided in URL)
+  - Fixed missing `await` for `build_search_context()` async function
+- 📚 **Agent-Based Development Workflow** (`CLAUDE.md`):
+  - Added comprehensive documentation for Architect Agent (Plan Mode)
+  - Added documentation for Code Worker Agent (Explore/General-Purpose)
+  - Defined best practices: "Plan First, Code Second", parallel execution, handoff patterns
+- 🧹 **Neo4j Duplicate Prevention**:
+  - Added `upsert_standard()` method using MERGE for duplicate prevention
+  - Cleaned 3,061 duplicate standards from database (1,529 duplicate groups)
+  - Updated import scripts to use upsert instead of create
+- ✅ **All endpoints tested and working**:
+  - Health: Neo4j and Redis connected
+  - Search: Returning results with proper formatting
+  - Update: Successfully updating standards
+
+## 🔄 Previous Updates (November 22, 2025)
 
 ### v4.5.0 - API-First MCP Architecture ✅ COMPLETE
 - 🚀 **New MCP Server**: `mcp_server/server_api_client.py` (468 lines)
@@ -1325,7 +1359,7 @@ For issues, questions, or suggestions:
 
 ---
 
-**Last Updated:** November 19, 2025 - Version 4.4.0 Multi-Format Parser Edition
+**Last Updated:** December 20, 2025 - Version 4.6.0 Code Consistency & Agent Workflow Edition
 
 **See Also:**
 - [DEEP_RESEARCH_MODE_IMPLEMENTATION.md](DEEP_RESEARCH_MODE_IMPLEMENTATION.md) - Deep research implementation details

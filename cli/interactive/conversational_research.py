@@ -840,7 +840,7 @@ class ConversationalResearchInterface:
     async def save_to_neo4j(self, standard: Dict[str, Any]) -> Optional[str]:
         """Save standard to Neo4j database."""
         try:
-            result = await self.neo4j_service.create_standard(
+            result = await self.neo4j_service.create_standard_from_dict(
                 standard_id=standard.get("id"),
                 name=standard.get("title"),
                 category=standard.get("category"),
