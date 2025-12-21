@@ -217,10 +217,17 @@ class SimpleCodeAuditorServer:
                 return [TextContent(type="text", text=json.dumps(result, indent=2))]
                 
             except Exception as e:
-                logger.error(f"Tool execution failed: {e}")
+                import traceback
+                error_msg = str(e) if str(e) else f"{type(e).__name__}: {repr(e)}"
+                logger.error(f"Tool execution failed: {error_msg}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 return [TextContent(
                     type="text",
-                    text=json.dumps({"error": str(e)}, indent=2)
+                    text=json.dumps({
+                        "error": error_msg,
+                        "error_type": type(e).__name__,
+                        "tool": name
+                    }, indent=2)
                 )]
     
     def _check_status(self) -> Dict[str, Any]:
@@ -291,8 +298,8 @@ class SimpleCodeAuditorServer:
         focus = args.get("focus", "all")
 
         try:
-            model = genai.GenerativeModel('gemini-1.5-pro')
-            
+            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+
             prompt = f"""Analyze this {language} code focusing on {focus}:
 
 ```{language}

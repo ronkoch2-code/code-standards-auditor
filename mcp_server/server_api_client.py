@@ -55,7 +55,7 @@ except ImportError as e:
 # Configuration - default to port 8001 where the API runs
 API_BASE_URL = os.getenv("CODE_AUDITOR_API_URL", "http://localhost:8001")
 API_KEY = os.getenv("CODE_AUDITOR_API_KEY", "")
-REQUEST_TIMEOUT = 30.0
+REQUEST_TIMEOUT = 60.0  # Increased timeout for slower operations
 
 # Mask API key for logging
 masked_key = f"{API_KEY[:10]}...{API_KEY[-4:]}" if len(API_KEY) > 14 else "NOT_SET"
@@ -549,6 +549,8 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             version = arguments.get("version")
             metadata = arguments.get("metadata")
 
+            logger.info(f"update_standard called: id={standard_id}, content={bool(content)}, version={version}")
+
             result = await api_client.update_standard(
                 standard_id=standard_id,
                 content=content,
@@ -556,9 +558,11 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 metadata=metadata
             )
 
+            logger.info(f"update_standard result: {result}")
+
             return [TextContent(
                 type="text",
-                text=json.dumps(result, indent=2)
+                text=json.dumps(result, indent=2, default=str)
             )]
 
         else:

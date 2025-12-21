@@ -55,6 +55,49 @@ class CacheService:
     async def health_check(self) -> bool:
         """Check cache health"""
         return await self.cache_manager.health_check()
+
+    async def set(
+        self,
+        key: str,
+        value: Any,
+        ttl: Optional[int] = None,
+        namespace: str = "default"
+    ) -> bool:
+        """
+        Generic set method for caching arbitrary data.
+
+        Args:
+            key: Cache key
+            value: Value to cache
+            ttl: Time to live in seconds (uses default if not specified)
+            namespace: Cache namespace for organization
+
+        Returns:
+            True if successful, False otherwise
+        """
+        return await self.cache_manager.set(
+            key,
+            value,
+            ttl=ttl or self.cache_manager.default_ttl,
+            namespace=namespace
+        )
+
+    async def get(
+        self,
+        key: str,
+        namespace: str = "default"
+    ) -> Optional[Any]:
+        """
+        Generic get method for retrieving cached data.
+
+        Args:
+            key: Cache key
+            namespace: Cache namespace
+
+        Returns:
+            Cached value or None if not found
+        """
+        return await self.cache_manager.get(key, namespace=namespace)
     
     def _generate_audit_key(
         self,

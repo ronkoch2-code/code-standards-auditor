@@ -1,8 +1,21 @@
-# Code Standards Auditor v4.6.0 - Code Consistency & Agent Workflow!
+# Code Standards Auditor v4.6.1 - MCP Bug Fixes
 
-> 🎉 **NEW in v4.6.0**: Major code consistency improvements! Fixed Standard dataclass/dict mismatches, added missing service methods, enhanced service factory with graceful degradation, and documented Agent-Based Development Workflow in CLAUDE.md.
+> 🎉 **NEW in v4.6.1**: Fixed MCP server issues! Updated Gemini model, added generic cache methods, improved error handling and timeouts.
 
 ## 🔄 Latest Updates (December 20, 2025)
+
+### v4.6.1 - MCP Bug Fixes ✅ COMPLETE
+- 🔧 **MCP Server Gemini Model Fix** (`mcp_server/server_simple.py`):
+  - Updated `analyze_code` to use `gemini-2.0-flash-exp` (was using unavailable `gemini-1.5-pro`)
+  - Added improved error handling with error type and traceback logging
+- 🔧 **CacheService Generic Methods** (`services/cache_service.py`):
+  - Added generic `set()` method for caching arbitrary data with TTL
+  - Added generic `get()` method for retrieving cached data
+  - Fixed "'CacheService' object has no attribute 'set'" errors
+- 🔧 **MCP Client Improvements** (`mcp_server/server_api_client.py`):
+  - Increased REQUEST_TIMEOUT from 30s to 60s for slower operations
+  - Added logging to `update_standard` handler for debugging
+  - Added `default=str` to json.dumps for better serialization
 
 ### v4.6.0 - Code Consistency & Agent Workflow ✅ COMPLETE
 - 🔧 **Standard Dataclass Enhancements** (`services/neo4j_service.py`):
